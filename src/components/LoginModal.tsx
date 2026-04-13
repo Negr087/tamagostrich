@@ -1,0 +1,440 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { useAuthStore } from '@/store/auth';
+import {
+  connectNDK,
+  loginWithExtension,
+  loginWithNsec,
+  loginWithBunker,
+  createNostrConnectSession,
+  LoginMethod,
+  NostrConnectSession,
+} from '@/lib/nostr';
+
+interface LoginModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+type BunkerTab = 'qr' | 'url';
+
+export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
+  const [method, setMethod] = useState<LoginMethod | null>(null);
+  const [nsecInput, setNsecInput] = useState('');
+  const [bunkerInput, setBunkerInput] = useState('');
+  const [hasNip07, setHasNip07] = useState(false);
+  const [bunkerTab, setBunkerTab] = useState<BunkerTab>('qr');
+  const [connectUri, setConnectUri] = useState('');
+  const [waitingForScan, setWaitingForScan] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [loadingMethod, setLoadingMethod] = useState<LoginMethod | null>(null);
+  const sessionRef = useRef<NostrConnectSession | null>(null);
+  const { setUser, setLoading, setError, isLoading, error } = useAuthStore();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const check = () => setHasNip07(!!window.nostr);
+    check();
+    const timer = setTimeout(check, 500);
+    return () => clearTimeout(timer);
+  }, [isOpen]);
+
+  // Generate nostrconnect URI when bunker tab is selected
+  useEffect(() => {
+    if (method !== 'bunker' || bunkerTab !== 'qr') return;
+    if (connectUri) return; // already generated
+
+    let cancelled = false;
+
+    const generate = async () => {
+      try {
+        const session = await createNostrConnectSession();
+        if (cancelled) {
+          session.cancel();
+          return;
+        }
+        sessionRef.current = session;
+        setConnectUri(session.uri);
+        setWaitingForScan(true);
+
+        // Wait for the remote signer to connect
+        const user = await session.waitForConnection();
+        if (cancelled || !user) return;
+
+        setUser(user, 'bunker');
+        onClose();
+      } catch (err) {
+        if (!cancelled) {
+          console.error('NostrConnect error:', err);
+          setError(err instanceof Error ? err.message : 'Connection failed');
+          setWaitingForScan(false);
+        }
+      }
+    };
+
+    generate();
+
+    return () => {
+      cancelled = true;
+      sessionRef.current?.cancel();
+    };
+  }, [method, bunkerTab]);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setMethod(null);
+      setConnectUri('');
+      setWaitingForScan(false);
+      setCopied(false);
+      sessionRef.current?.cancel();
+      sessionRef.current = null;
+    }
+  }, [isOpen]);
+
+  const handleCopyUri = useCallback(async () => {
+    if (!connectUri) return;
+    try {
+      await navigator.clipboard.writeText(connectUri);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = connectUri;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [connectUri]);
+
+  if (!isOpen) return null;
+
+  const handleLogin = async (loginMethod: LoginMethod) => {
+    setLoading(true);
+    setLoadingMethod(loginMethod);
+    setError(null);
+
+    try {
+      await connectNDK();
+
+      let user = null;
+
+      switch (loginMethod) {
+        case 'extension':
+          if (!window.nostr) {
+            throw new Error('Nostr extension not detected. Make sure Alby or nos2x is installed and tap the extension icon.');
+          }
+          user = await loginWithExtension();
+          break;
+        case 'nsec':
+          if (!nsecInput.trim()) {
+            throw new Error('Please enter your nsec');
+          }
+          user = await loginWithNsec(nsecInput);
+          break;
+        case 'bunker':
+          if (!bunkerInput.trim()) {
+            throw new Error('Please enter your bunker URL');
+          }
+          user = await loginWithBunker(bunkerInput);
+          break;
+      }
+
+      if (user) {
+        setUser(user, loginMethod);
+        onClose();
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setLoading(false);
+      setLoadingMethod(null);
+    }
+  };
+
+  const handleBack = () => {
+    setMethod(null);
+    setConnectUri('');
+    setWaitingForScan(false);
+    setCopied(false);
+    sessionRef.current?.cancel();
+    sessionRef.current = null;
+    setError(null);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {/* Gradient border wrapper */}
+      <div
+        className="rounded-2xl max-w-md w-full shadow-2xl p-[2px]"
+        style={{
+          background: 'linear-gradient(90deg, #d946ef, #a855f7, #b4f953)',
+          backgroundSize: '200% auto',
+          animation: 'gradientShift 3s linear infinite',
+        }}
+      >
+      <div className="bg-lc-dark rounded-[14px] w-full p-8">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-xl font-bold text-lc-white">Connect to Nostr</h2>
+            <p className="text-sm text-lc-muted mt-1">Choose your login method</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-lc-border/50 hover:bg-lc-border text-lc-muted hover:text-lc-white transition"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            {error}
+          </div>
+        )}
+
+        {/* Method selection */}
+        {!method ? (
+          <div className="space-y-3">
+            {/* Extension - only shown when NIP-07 is detected */}
+            {hasNip07 && (
+              <button
+                onClick={() => handleLogin('extension')}
+                disabled={isLoading}
+                className="w-full flex items-center gap-4 p-4 bg-lc-olive/40 hover:bg-lc-olive/60 border border-lc-green/20 rounded-xl transition-all duration-200 disabled:opacity-50 group"
+              >
+                <div className="w-11 h-11 bg-lc-green/20 rounded-xl flex items-center justify-center group-hover:bg-lc-green/30 transition">
+                  {loadingMethod === 'extension' ? (
+                    <div className="lc-spinner" />
+                  ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b4f953" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0110 0v4"/>
+                    </svg>
+                  )}
+                </div>
+                <div className="text-left flex-1">
+                  <div className="font-semibold text-lc-white">Browser Extension</div>
+                  <div className="text-sm text-lc-muted">
+                    {loadingMethod === 'extension' ? 'Connecting...' : 'Alby, nos2x, or similar'}
+                  </div>
+                </div>
+                {loadingMethod !== 'extension' && (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" className="opacity-0 group-hover:opacity-100 transition">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                )}
+              </button>
+            )}
+
+            {/* nsec */}
+            <button
+              onClick={() => setMethod('nsec')}
+              disabled={isLoading}
+              className="w-full flex items-center gap-4 p-4 bg-lc-card hover:bg-lc-border/50 border border-lc-border rounded-xl transition-all duration-200 disabled:opacity-50 group"
+            >
+              <div className="w-11 h-11 bg-lc-border rounded-xl flex items-center justify-center group-hover:bg-lc-border/80 transition">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+              </div>
+              <div className="text-left flex-1">
+                <div className="font-semibold text-lc-white">Private Key (nsec)</div>
+                <div className="text-sm text-lc-muted">Enter your nsec directly</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" className="opacity-0 group-hover:opacity-100 transition">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+
+            {/* Bunker */}
+            <button
+              onClick={() => setMethod('bunker')}
+              disabled={isLoading}
+              className="w-full flex items-center gap-4 p-4 bg-lc-card hover:bg-lc-border/50 border border-lc-border rounded-xl transition-all duration-200 disabled:opacity-50 group"
+            >
+              <div className="w-11 h-11 bg-lc-border rounded-xl flex items-center justify-center group-hover:bg-lc-border/80 transition">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </div>
+              <div className="text-left flex-1">
+                <div className="font-semibold text-lc-white">Nostr Bunker</div>
+                <div className="text-sm text-lc-muted">Remote signer (NIP-46)</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" className="opacity-0 group-hover:opacity-100 transition">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          </div>
+
+        // nsec screen
+        ) : method === 'nsec' ? (
+          <div className="space-y-5">
+            <button onClick={handleBack} className="text-lc-muted hover:text-lc-white text-sm flex items-center gap-1.5 transition">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Back
+            </button>
+            <div>
+              <label className="block text-sm text-lc-muted mb-2 font-medium">
+                Enter your nsec (private key)
+              </label>
+              <input
+                type="password"
+                value={nsecInput}
+                onChange={(e) => setNsecInput(e.target.value)}
+                placeholder="nsec1..."
+                className="w-full p-3.5 bg-lc-black border border-lc-border rounded-xl text-lc-white placeholder-lc-border font-mono text-sm focus:outline-none focus:border-lc-green/50 focus:ring-1 focus:ring-lc-green/20 transition"
+              />
+              <p className="mt-2.5 text-xs text-lc-muted flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Never share your nsec. It will be stored in memory only.
+              </p>
+            </div>
+            <button
+              onClick={() => handleLogin('nsec')}
+              disabled={isLoading || !nsecInput.trim()}
+              className="w-full lc-pill lc-pill-primary text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loadingMethod === 'nsec' && <div className="lc-spinner" style={{ borderTopColor: '#0a0a0a', borderColor: 'rgba(10,10,10,0.3)' }} />}
+              {loadingMethod === 'nsec' ? 'Connecting...' : 'Connect'}
+            </button>
+          </div>
+
+        // Bunker screen with QR + URL tabs
+        ) : (
+          <div className="space-y-5">
+            <button onClick={handleBack} className="text-lc-muted hover:text-lc-white text-sm flex items-center gap-1.5 transition">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Back
+            </button>
+
+            {/* Bunker tabs */}
+            <div className="flex bg-lc-black rounded-xl p-1 border border-lc-border/50">
+              <button
+                onClick={() => setBunkerTab('qr')}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                  bunkerTab === 'qr'
+                    ? 'bg-lc-border text-lc-white'
+                    : 'text-lc-muted hover:text-lc-white'
+                }`}
+              >
+                QR Code
+              </button>
+              <button
+                onClick={() => setBunkerTab('url')}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                  bunkerTab === 'url'
+                    ? 'bg-lc-border text-lc-white'
+                    : 'text-lc-muted hover:text-lc-white'
+                }`}
+              >
+                Bunker URL
+              </button>
+            </div>
+
+            {bunkerTab === 'qr' ? (
+              <div className="space-y-4">
+                {/* QR Code */}
+                <div className="flex flex-col items-center">
+                  {connectUri ? (
+                    <>
+                      <div className="bg-white p-4 rounded-2xl mb-4">
+                        <QRCodeSVG
+                          value={connectUri}
+                          size={200}
+                          level="M"
+                          bgColor="#ffffff"
+                          fgColor="#0a0a0a"
+                        />
+                      </div>
+                      <p className="text-sm text-lc-muted text-center mb-3">
+                        Scan with your signer app (Amber, nsec.app, etc.)
+                      </p>
+
+                      {/* Copy URI button */}
+                      <button
+                        onClick={handleCopyUri}
+                        className="flex items-center gap-2 text-xs text-lc-muted hover:text-lc-green transition px-3 py-1.5 bg-lc-black rounded-lg border border-lc-border/50"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                        </svg>
+                        {copied ? 'Copied!' : 'Copy connection URI'}
+                      </button>
+
+                      {waitingForScan && (
+                        <div className="mt-4 flex items-center gap-2 text-lc-green text-sm">
+                          <div className="lc-spinner" />
+                          Waiting for connection...
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="py-8 flex flex-col items-center gap-3">
+                      <div className="lc-spinner" />
+                      <p className="text-sm text-lc-muted">Generating connection...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-lc-muted mb-2 font-medium">
+                    Paste your bunker URL
+                  </label>
+                  <input
+                    type="text"
+                    value={bunkerInput}
+                    onChange={(e) => setBunkerInput(e.target.value)}
+                    placeholder="bunker://..."
+                    className="w-full p-3.5 bg-lc-black border border-lc-border rounded-xl text-lc-white placeholder-lc-border font-mono text-sm focus:outline-none focus:border-lc-green/50 focus:ring-1 focus:ring-lc-green/20 transition"
+                  />
+                  <p className="mt-2.5 text-xs text-lc-muted">
+                    Get this from your nsecBunker or similar remote signer.
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleLogin('bunker')}
+                  disabled={isLoading || !bunkerInput.trim()}
+                  className="w-full lc-pill lc-pill-primary text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loadingMethod === 'bunker' && <div className="lc-spinner" style={{ borderTopColor: '#0a0a0a', borderColor: 'rgba(10,10,10,0.3)' }} />}
+                  {loadingMethod === 'bunker' ? 'Connecting...' : 'Connect'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
+      </div>
+    </div>
+  );
+}
