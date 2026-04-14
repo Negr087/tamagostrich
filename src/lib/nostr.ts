@@ -140,33 +140,23 @@ export async function loginWithNsec(nsec: string): Promise<NDKUser | null> {
 }
 
 export async function loginWithBunker(bunkerUrl: string): Promise<NDKUser | null> {
-  // bunker://pubkey?relay=wss://relay.nsecbunker.com
+  // bunker://pubkey?relay=wss://relay.nsecbunker.com&secret=optional
+  // NDK v3 accepts the full bunker:// URL string directly — don't parse it manually.
   const ndk = getNDK();
+  await ndk.connect(5000);
 
-  // Parse bunker URL
-  const url = new URL(bunkerUrl);
-  const remotePubkey = url.hostname;
-  const relayUrl = url.searchParams.get('relay');
-
-  if (!remotePubkey || !relayUrl) {
-    throw new Error('Invalid bunker URL format');
-  }
-
-  // Dynamic import for bunker signer
   const { NDKNip46Signer } = await import('@nostr-dev-kit/ndk');
 
   const localSigner = NDKPrivateKeySigner.generate();
-  const bunkerSigner = new NDKNip46Signer(ndk, remotePubkey, localSigner);
+  // Pass the full URL; NDK extracts pubkey, relay, and secret internally.
+  const bunkerSigner = new NDKNip46Signer(ndk, bunkerUrl.trim(), localSigner);
 
-  await bunkerSigner.blockUntilReady();
+  await withTimeout(bunkerSigner.blockUntilReady(), 30000);
   ndk.signer = bunkerSigner;
 
   const user = await bunkerSigner.user();
   try {
-    await Promise.race([
-      user.fetchProfile(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-    ]);
+    await withTimeout(user.fetchProfile(), 8000);
   } catch {
     console.warn('Profile fetch timed out or failed');
   }
@@ -174,28 +164,49 @@ export async function loginWithBunker(bunkerUrl: string): Promise<NDKUser | null
   return user;
 }
 
-// NostrConnect flow — generates a URI for QR scanning
+// NostrConnect flow — generates a URI for QR scanning or deep link (Amber on Android)
 export interface NostrConnectSession {
   uri: string;
   waitForConnection: () => Promise<NDKUser | null>;
   cancel: () => void;
 }
 
+// Relays that reliably support NIP-46 ephemeral events
+const NOSTRCONNECT_RELAYS = [
+  'wss://relay.nsec.app',
+  'wss://relay.nsecbunker.com',
+  'wss://nos.lol',
+];
+
 export async function createNostrConnectSession(relay?: string): Promise<NostrConnectSession> {
   const ndk = getNDK();
-  // Don't await — NDK connects in the background
-  ndk.connect();
+  // Wait for connection so the relay subscription is live before the remote signer responds
+  await ndk.connect(5000);
 
   const { NDKNip46Signer } = await import('@nostr-dev-kit/ndk');
 
-  const connectRelay = relay || 'wss://relay.nsec.app';
+  const connectRelay = relay || NOSTRCONNECT_RELAYS[0];
 
-  const signer = NDKNip46Signer.nostrconnect(ndk, connectRelay, undefined, {
-    name: 'Nostr Starter Kit',
-    url: typeof window !== 'undefined' ? window.location.origin : 'https://nostr-starter.local',
+  // Generate local signer explicitly so its pubkey is available synchronously
+  const localSigner = NDKPrivateKeySigner.generate();
+
+  const appName = 'Tamagostrich';
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+  const signer = NDKNip46Signer.nostrconnect(ndk, connectRelay, localSigner, {
+    name: appName,
+    url: appUrl,
+    // Request only the permissions this app needs — Amber auto-approves known perms
+    perms: 'get_public_key,sign_event:0,sign_event:1',
   });
 
+  // Give NDK a tick to build the URI from the signer's keypair
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
   const uri = signer.nostrConnectUri || '';
+  if (!uri) {
+    console.warn('nostrConnectUri is empty — NDK may not have built it yet');
+  }
 
   let cancelled = false;
 
@@ -205,10 +216,7 @@ export async function createNostrConnectSession(relay?: string): Promise<NostrCo
       if (cancelled) return null;
       ndk.signer = signer;
       try {
-        await Promise.race([
-          user.fetchProfile(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-        ]);
+        await withTimeout(user.fetchProfile(), 8000);
       } catch {
         console.warn('Profile fetch timed out or failed');
       }

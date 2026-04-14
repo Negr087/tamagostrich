@@ -25,6 +25,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [nsecInput, setNsecInput] = useState('');
   const [bunkerInput, setBunkerInput] = useState('');
   const [hasNip07, setHasNip07] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [bunkerTab, setBunkerTab] = useState<BunkerTab>('qr');
   const [connectUri, setConnectUri] = useState('');
   const [waitingForScan, setWaitingForScan] = useState(false);
@@ -32,6 +33,10 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [loadingMethod, setLoadingMethod] = useState<LoginMethod | null>(null);
   const sessionRef = useRef<NostrConnectSession | null>(null);
   const { setUser, setLoading, setError, isLoading, error } = useAuthStore();
+
+  useEffect(() => {
+    setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -359,46 +364,65 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
             {bunkerTab === 'qr' ? (
               <div className="space-y-4">
-                {/* QR Code */}
                 <div className="flex flex-col items-center">
                   {connectUri ? (
                     <>
-                      <div className="bg-white p-4 rounded-2xl mb-4">
-                        <QRCodeSVG
-                          value={connectUri}
-                          size={200}
-                          level="M"
-                          bgColor="#ffffff"
-                          fgColor="#0a0a0a"
-                        />
-                      </div>
-                      <p className="text-sm text-lc-muted text-center mb-3">
-                        Scan with your signer app (Amber, nsec.app, etc.)
-                      </p>
+                      {/* On mobile: deep link button to open Amber directly */}
+                      {isMobile ? (
+                        <div className="w-full space-y-3">
+                          <a
+                            href={connectUri}
+                            className="w-full flex items-center justify-center gap-3 p-4 bg-lc-green/10 hover:bg-lc-green/20 border border-lc-green/30 rounded-xl transition-all duration-200 text-lc-green font-semibold"
+                          >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                            Abrir en Amber
+                          </a>
+                          <p className="text-xs text-lc-muted text-center">
+                            Toca el botón para abrir Amber y aprobar la conexión. Luego volvé acá.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="bg-white p-4 rounded-2xl mb-4">
+                            <QRCodeSVG
+                              value={connectUri}
+                              size={200}
+                              level="M"
+                              bgColor="#ffffff"
+                              fgColor="#0a0a0a"
+                            />
+                          </div>
+                          <p className="text-sm text-lc-muted text-center mb-3">
+                            Escaneá con Amber, nsec.app u otro signer
+                          </p>
+                        </>
+                      )}
 
-                      {/* Copy URI button */}
+                      {/* Copy URI — always visible */}
                       <button
                         onClick={handleCopyUri}
-                        className="flex items-center gap-2 text-xs text-lc-muted hover:text-lc-green transition px-3 py-1.5 bg-lc-black rounded-lg border border-lc-border/50"
+                        className="flex items-center gap-2 text-xs text-lc-muted hover:text-lc-green transition px-3 py-1.5 bg-lc-black rounded-lg border border-lc-border/50 mt-2"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
                         </svg>
-                        {copied ? 'Copied!' : 'Copy connection URI'}
+                        {copied ? '¡Copiado!' : 'Copiar URI de conexión'}
                       </button>
 
                       {waitingForScan && (
                         <div className="mt-4 flex items-center gap-2 text-lc-green text-sm">
                           <div className="lc-spinner" />
-                          Waiting for connection...
+                          Esperando conexión...
                         </div>
                       )}
                     </>
                   ) : (
                     <div className="py-8 flex flex-col items-center gap-3">
                       <div className="lc-spinner" />
-                      <p className="text-sm text-lc-muted">Generating connection...</p>
+                      <p className="text-sm text-lc-muted">Generando conexión...</p>
                     </div>
                   )}
                 </div>
@@ -417,7 +441,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     className="w-full p-3.5 bg-lc-black border border-lc-border rounded-xl text-lc-white placeholder-lc-border font-mono text-sm focus:outline-none focus:border-lc-green/50 focus:ring-1 focus:ring-lc-green/20 transition"
                   />
                   <p className="mt-2.5 text-xs text-lc-muted">
-                    Get this from your nsecBunker or similar remote signer.
+                    En Amber: Menú → Conectar con bunker → copiar URL. Formato: <span className="font-mono text-lc-white/60">bunker://pubkey?relay=...</span>
                   </p>
                 </div>
                 <button
