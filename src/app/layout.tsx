@@ -5,6 +5,12 @@ import SessionRestorer from '@/components/SessionRestorer';
 export const metadata: Metadata = {
   title: 'Tamagostrich — Tu Mascota Nostr',
   description: 'Cuidá a tu Mascota, el avestruz virtual que vive en el protocolo Nostr.',
+  themeColor: '#0a0a0a',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Tamagostrich',
+  },
 };
 
 export default function RootLayout({

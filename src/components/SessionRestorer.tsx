@@ -7,6 +7,13 @@ import { getNDK, restoreNip46Session } from '@/lib/nostr';
 
 export default function SessionRestorer() {
   useEffect(() => {
+    // Register service worker for PWA installability
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
     const { profile, loginMethod, nip46Session, isConnected, restoreSession } = useAuthStore.getState();
 
     // If profile is persisted but isConnected is false (page load / back navigation)
