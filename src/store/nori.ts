@@ -185,11 +185,20 @@ export const useNoriStore = create<NoriState>()(
           const { fetchPetState, connectNDK } = await import('@/lib/nostr');
           await connectNDK();
           const remote = await fetchPetState(pubkey);
-          if (!remote) return;
+          if (!remote) {
+            // No state on Nostr yet — publish current local state so other devices can sync
+            scheduleSync();
+            return;
+          }
 
           const local = get();
-          // Use remote state if it's more recent than local
-          if (remote.lastDecayTime > local.lastDecayTime || remote.lastEventTime > local.lastEventTime) {
+          // Use remote if: this browser never had activity (fresh/default state),
+          // OR remote has more recent activity/decay than local
+          const localIsDefault = local.activityLog.length === 0;
+          const remoteIsNewer  = remote.lastEventTime > local.lastEventTime
+                              || remote.lastDecayTime > local.lastDecayTime;
+
+          if (localIsDefault || remoteIsNewer) {
             set({
               stats: {
                 happiness: clamp(remote.stats.happiness),
@@ -203,6 +212,9 @@ export const useNoriStore = create<NoriState>()(
             });
             // Apply decay accumulated since last sync
             useNoriStore.getState().decayStats();
+          } else {
+            // Local is more recent — publish it so other devices can sync
+            scheduleSync();
           }
         } catch (e) {
           console.warn('[pet-sync] load failed:', e);
