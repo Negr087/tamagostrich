@@ -170,6 +170,7 @@ export async function loginWithRemoteSigner(
   options: Nip46Session
 ): Promise<NDKUser | null> {
   const ndk = getNDK();
+  await ndk.connect(5000);
 
   // Store session for future signing
   nip46Session = options;
