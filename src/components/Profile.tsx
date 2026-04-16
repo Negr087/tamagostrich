@@ -11,6 +11,72 @@ import {
   formatTimestamp,
 } from '@/lib/nostr';
 
+const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|avif|bmp)(\?[^\s]*)?$/i;
+const VIDEO_EXT = /\.(mp4|mov|webm|ogv|ogg)(\?[^\s]*)?$/i;
+const URL_REGEX  = /https?:\/\/[^\s<>"]+/g;
+
+function NoteContent({ content }: { content: string }) {
+  type Segment = { type: 'text' | 'image' | 'video' | 'link'; value: string };
+  const segments: Segment[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  URL_REGEX.lastIndex = 0;
+
+  while ((m = URL_REGEX.exec(content)) !== null) {
+    if (m.index > lastIndex) {
+      segments.push({ type: 'text', value: content.slice(lastIndex, m.index) });
+    }
+    const url = m[0].replace(/[.,!?;:]+$/, ''); // strip trailing punctuation
+    if (IMAGE_EXT.test(url))      segments.push({ type: 'image', value: url });
+    else if (VIDEO_EXT.test(url)) segments.push({ type: 'video', value: url });
+    else                          segments.push({ type: 'link',  value: url });
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < content.length) {
+    segments.push({ type: 'text', value: content.slice(lastIndex) });
+  }
+
+  return (
+    <div className="break-words leading-relaxed">
+      {segments.map((seg, i) => {
+        if (seg.type === 'image') {
+          return (
+            <img
+              key={i}
+              src={seg.value}
+              alt=""
+              loading="lazy"
+              className="mt-2 rounded-xl max-w-full block"
+              style={{ maxHeight: '400px', objectFit: 'cover' }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          );
+        }
+        if (seg.type === 'video') {
+          return (
+            <video
+              key={i}
+              src={seg.value}
+              controls
+              className="mt-2 rounded-xl max-w-full block"
+              style={{ maxHeight: '400px' }}
+            />
+          );
+        }
+        if (seg.type === 'link') {
+          return (
+            <a key={i} href={seg.value} target="_blank" rel="noopener noreferrer"
+              className="text-lc-green hover:underline break-all">
+              {seg.value}
+            </a>
+          );
+        }
+        return <span key={i} className="whitespace-pre-wrap text-lc-white/85">{seg.value}</span>;
+      })}
+    </div>
+  );
+}
+
 function SkeletonImg(props: ImgHTMLAttributes<HTMLImageElement>) {
   const [loaded, setLoaded] = useState(false);
   return (
@@ -357,9 +423,7 @@ export default function Profile() {
                     </div>
                   </div>
                 </div>
-                <p className="text-lc-white/85 whitespace-pre-wrap break-words leading-relaxed">
-                  {note.content}
-                </p>
+                <NoteContent content={note.content} />
               </div>
             ))
           )}
