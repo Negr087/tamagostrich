@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import SessionRestorer from '@/components/SessionRestorer';
 
 export const metadata: Metadata = {
   title: 'Tamagostrich — Tu Mascota Nostr',
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="bg-lc-black text-lc-white antialiased" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+        <SessionRestorer />
         {children}
       </body>
     </html>

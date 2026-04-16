@@ -157,6 +157,10 @@ export function clearNip46Session(): void {
   nip46Session = null;
 }
 
+export function restoreNip46Session(session: Nip46Session): void {
+  nip46Session = session;
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {

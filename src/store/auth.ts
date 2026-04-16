@@ -72,6 +72,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'nostr-auth',
       partialize: (state) => ({
+        isConnected: state.isConnected,
         loginMethod: state.loginMethod,
         profile: state.profile,
         nip46Session: state.nip46Session,
