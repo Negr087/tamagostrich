@@ -8,10 +8,16 @@ import {
   loginWithExtension,
   loginWithNsec,
   loginWithBunker,
-  createNostrConnectSession,
+  loginWithRemoteSigner,
   LoginMethod,
-  NostrConnectSession,
 } from '@/lib/nostr';
+import { useNostrConnect } from '@/lib/use-nostr-connect';
+
+const NIP46_RELAYS = [
+  'wss://relay.nsec.app',
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+];
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -27,12 +33,12 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [hasNip07, setHasNip07] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [bunkerTab, setBunkerTab] = useState<BunkerTab>('qr');
-  const [connectUri, setConnectUri] = useState('');
-  const [waitingForScan, setWaitingForScan] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loadingMethod, setLoadingMethod] = useState<LoginMethod | null>(null);
-  const sessionRef = useRef<NostrConnectSession | null>(null);
+  const loginInProgressRef = useRef(false);
   const { setUser, setLoading, setError, isLoading, error } = useAuthStore();
+
+  const nip46 = useNostrConnect(NIP46_RELAYS);
 
   useEffect(() => {
     setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
@@ -46,69 +52,68 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     return () => clearTimeout(timer);
   }, [isOpen]);
 
-  // Generate nostrconnect URI when bunker tab is selected
+  // Detectar conexión NIP-46 exitosa y hacer login
   useEffect(() => {
-    if (method !== 'bunker' || bunkerTab !== 'qr') return;
-    if (connectUri) return; // already generated
-
-    let cancelled = false;
-
-    const generate = async () => {
-      try {
-        const session = await createNostrConnectSession();
-        if (cancelled) {
-          session.cancel();
-          return;
-        }
-        sessionRef.current = session;
-        setConnectUri(session.uri);
-        setWaitingForScan(true);
-
-        // Wait for the remote signer to connect
-        const user = await session.waitForConnection();
-        if (cancelled || !user) return;
-
-        setUser(user, 'bunker');
-        onClose();
-      } catch (err) {
-        if (!cancelled) {
-          console.error('NostrConnect error:', err);
+    if (
+      nip46.connected &&
+      nip46.remotePubkey &&
+      nip46.signerPubkey &&
+      nip46.clientSecretHex &&
+      !loginInProgressRef.current
+    ) {
+      loginInProgressRef.current = true;
+      loginWithRemoteSigner(nip46.remotePubkey, {
+        signerPubkey: nip46.signerPubkey,
+        clientSecretHex: nip46.clientSecretHex,
+        relays: nip46.nip46Relays,
+      })
+        .then((user) => {
+          if (user) {
+            setUser(user, 'bunker', {
+              signerPubkey: nip46.signerPubkey!,
+              clientSecretHex: nip46.clientSecretHex!,
+              relays: nip46.nip46Relays,
+            });
+          }
+          onClose();
+          nip46.reset();
+        })
+        .catch((err) => {
+          console.error('Login failed:', err);
           setError(err instanceof Error ? err.message : 'Connection failed');
-          setWaitingForScan(false);
-        }
-      }
-    };
+          loginInProgressRef.current = false;
+        });
+    }
+    if (!nip46.connected) {
+      loginInProgressRef.current = false;
+    }
+  }, [nip46.connected, nip46.remotePubkey, nip46.signerPubkey, nip46.clientSecretHex]);
 
-    generate();
-
-    return () => {
-      cancelled = true;
-      sessionRef.current?.cancel();
-    };
+  // Generar URI automáticamente al entrar al tab QR
+  useEffect(() => {
+    if (method === 'bunker' && bunkerTab === 'qr' && !nip46.uri) {
+      nip46.generateConnectionUri();
+    }
   }, [method, bunkerTab]);
 
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
       setMethod(null);
-      setConnectUri('');
-      setWaitingForScan(false);
       setCopied(false);
-      sessionRef.current?.cancel();
-      sessionRef.current = null;
+      nip46.reset();
     }
   }, [isOpen]);
 
   const handleCopyUri = useCallback(async () => {
-    if (!connectUri) return;
+    if (!nip46.uri) return;
     try {
-      await navigator.clipboard.writeText(connectUri);
+      await navigator.clipboard.writeText(nip46.uri);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback
       const textarea = document.createElement('textarea');
-      textarea.value = connectUri;
+      textarea.value = nip46.uri;
       document.body.appendChild(textarea);
       textarea.select();
       document.execCommand('copy');
@@ -116,7 +121,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [connectUri]);
+  }, [nip46.uri]);
 
   if (!isOpen) return null;
 
@@ -166,11 +171,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
   const handleBack = () => {
     setMethod(null);
-    setConnectUri('');
-    setWaitingForScan(false);
     setCopied(false);
-    sessionRef.current?.cancel();
-    sessionRef.current = null;
+    nip46.reset();
     setError(null);
   };
 
@@ -365,13 +367,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             {bunkerTab === 'qr' ? (
               <div className="space-y-4">
                 <div className="flex flex-col items-center">
-                  {connectUri ? (
+                  {nip46.uri ? (
                     <>
                       {/* On mobile: deep link button to open Amber directly */}
                       {isMobile ? (
                         <div className="w-full space-y-3">
                           <a
-                            href={connectUri}
+                            href={nip46.uri}
                             className="w-full flex items-center justify-center gap-3 p-4 bg-lc-green/10 hover:bg-lc-green/20 border border-lc-green/30 rounded-xl transition-all duration-200 text-lc-green font-semibold"
                           >
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -387,7 +389,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         <>
                           <div className="bg-white p-4 rounded-2xl mb-4">
                             <QRCodeSVG
-                              value={connectUri}
+                              value={nip46.uri}
                               size={200}
                               level="M"
                               bgColor="#ffffff"
@@ -412,12 +414,28 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         {copied ? '¡Copiado!' : 'Copiar URI de conexión'}
                       </button>
 
-                      {waitingForScan && (
+                      {nip46.isWaiting && !nip46.connected && (
                         <div className="mt-4 flex items-center gap-2 text-lc-green text-sm">
                           <div className="lc-spinner" />
                           Esperando conexión...
                         </div>
                       )}
+
+                      {nip46.connected && (
+                        <div className="mt-4 flex items-center gap-2 text-lc-green text-sm">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                          ¡Conectado! Iniciando sesión...
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => nip46.reset()}
+                        className="mt-3 text-xs text-lc-muted hover:text-lc-white transition"
+                      >
+                        Generar nuevo código
+                      </button>
                     </>
                   ) : (
                     <div className="py-8 flex flex-col items-center gap-3">

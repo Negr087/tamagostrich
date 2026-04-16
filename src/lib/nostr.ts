@@ -1,5 +1,6 @@
 import NDK, { NDKEvent, NDKUser, NDKNip07Signer, NDKPrivateKeySigner } from '@nostr-dev-kit/ndk';
-import { nip19 } from 'nostr-tools';
+import { nip19, nip44, nip04, finalizeEvent, SimplePool } from 'nostr-tools';
+import type { UnsignedEvent, Event } from 'nostr-tools';
 
 // Popular relays (high availability)
 const POPULAR_RELAYS = [
@@ -137,6 +138,123 @@ export async function loginWithNsec(nsec: string): Promise<NDKUser | null> {
   await user.fetchProfile();
   
   return user;
+}
+
+// NIP-46 session for remote signing (set after loginWithRemoteSigner)
+export interface Nip46Session {
+  signerPubkey: string;
+  clientSecretHex: string;
+  relays: string[];
+}
+
+let nip46Session: Nip46Session | null = null;
+
+export function getNip46Session(): Nip46Session | null {
+  return nip46Session;
+}
+
+export function clearNip46Session(): void {
+  nip46Session = null;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+export async function loginWithRemoteSigner(
+  remotePubkey: string,
+  options: Nip46Session
+): Promise<NDKUser | null> {
+  const ndk = getNDK();
+
+  // Store session for future signing
+  nip46Session = options;
+
+  // Build an NDKUser with the remote pubkey
+  const user = ndk.getUser({ pubkey: remotePubkey });
+
+  try {
+    await withTimeout(user.fetchProfile(), 8000);
+  } catch {
+    console.warn('[NIP-46] Profile fetch timed out, continuing with pubkey only');
+  }
+
+  return user;
+}
+
+// Sign an event via NIP-46 remote signer (used after loginWithRemoteSigner)
+export async function signEventViaNip46(
+  unsignedEvent: UnsignedEvent
+): Promise<Event | null> {
+  if (!nip46Session) return null;
+
+  const { signerPubkey, clientSecretHex, relays: sessionRelays } = nip46Session;
+  const clientSecretBytes = hexToBytes(clientSecretHex);
+  const clientPubkey = (await import('nostr-tools')).getPublicKey(clientSecretBytes);
+
+  const reqId = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const { pubkey: _pubkey, ...eventTemplate } = unsignedEvent as any;
+  const request = JSON.stringify({ id: reqId, method: 'sign_event', params: [eventTemplate] });
+
+  let encrypted: string;
+  try {
+    encrypted = nip44.encrypt(request, nip44.getConversationKey(clientSecretBytes, signerPubkey));
+  } catch {
+    encrypted = await nip04.encrypt(clientSecretHex, signerPubkey, request);
+  }
+
+  const pool = new SimplePool();
+  const sinceTs = Math.floor(Date.now() / 1000) - 5;
+
+  const reqEvent = finalizeEvent({
+    kind: 24133,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [['p', signerPubkey]],
+    content: encrypted,
+  }, clientSecretBytes);
+
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    const sub = pool.subscribeMany(
+      sessionRelays,
+      [{ kinds: [24133], '#p': [clientPubkey], since: sinceTs }] as any,
+      {
+        async onevent(event) {
+          if (event.pubkey !== signerPubkey) return;
+          try {
+            let decrypted: string;
+            try {
+              decrypted = nip44.decrypt(event.content, nip44.getConversationKey(clientSecretBytes, signerPubkey));
+            } catch {
+              decrypted = await nip04.decrypt(clientSecretHex, signerPubkey, event.content);
+            }
+            const msg = JSON.parse(decrypted);
+            if (msg.id === reqId && msg.result) {
+              clearTimeout(timer);
+              sub.close();
+              pool.close(sessionRelays);
+              resolve(msg.result as Event);
+            }
+          } catch {}
+        },
+      }
+    );
+
+    timer = setTimeout(() => {
+      sub.close();
+      pool.close(sessionRelays);
+      resolve(null);
+    }, 15000);
+
+    Promise.allSettled(pool.publish(sessionRelays, reqEvent));
+  });
 }
 
 export async function loginWithBunker(bunkerUrl: string): Promise<NDKUser | null> {
