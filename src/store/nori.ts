@@ -49,7 +49,7 @@ const ACTION_EFFECTS: Record<NoriAction, { happiness: number; energy: number; so
   zap_received:      { happiness: 15, energy: 10, social: 5 },
   note_published:    { happiness: 5,  energy: -5, social: 10 },
   reaction_received: { happiness: 10, energy: 5,  social: 8 },
-  no_activity:       { happiness: -3, energy: 5,  social: -5 },
+  no_activity:       { happiness: -5, energy: -4, social: -8 },
   mention_received:  { happiness: 8,  energy: 3,  social: 12 },
   new_follower:      { happiness: 12, energy: 5,  social: 15 },
 };
