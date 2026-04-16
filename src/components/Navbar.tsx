@@ -14,12 +14,12 @@ export default function Navbar() {
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 z-40 bg-lc-black/90 backdrop-blur-xl border-b border-lc-border/50">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Tamagostrich" className="w-16 h-16 object-contain" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <img src="/logo.png" alt="Tamagostrich" className="w-10 h-10 sm:w-16 sm:h-16 object-contain" />
             <span
-              className="font-bold text-lg tracking-tight"
+              className="hidden sm:inline font-bold text-lg tracking-tight"
               style={{
                 background: 'linear-gradient(90deg, #d946ef, #a855f7, #b4f953)',
                 backgroundSize: '200% auto',
@@ -35,7 +35,7 @@ export default function Navbar() {
 
           {/* Nav links — shown when logged in */}
           {isConnected && profile && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5 sm:gap-1">
               {([
                 { id: 'nori' as const, label: 'Mascota', icon: (
                   <img src="/huella.png" alt="Mascota" width={20} height={20} style={{ filter: 'invert(85%) sepia(60%) saturate(500%) hue-rotate(40deg) brightness(1.1)', objectFit: 'contain' }} />
@@ -53,14 +53,14 @@ export default function Navbar() {
                 <button
                   key={id}
                   onClick={() => setActiveSection(id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                     activeSection === id
                       ? 'bg-lc-border/60'
                       : 'hover:bg-lc-border/30'
                   }`}
                 >
                   {icon}
-                  <span style={{
+                  <span className="hidden sm:inline" style={{
                     background: 'linear-gradient(90deg, #d946ef, #a855f7, #b4f953)',
                     backgroundSize: '200% auto',
                     WebkitBackgroundClip: 'text',
@@ -74,12 +74,12 @@ export default function Navbar() {
           )}
 
           {/* Right side */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {isConnected && profile ? (
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
-                  className="flex items-center gap-2.5 py-1.5 pl-1.5 pr-4 bg-lc-dark hover:bg-lc-border rounded-full transition-all duration-200 border border-lc-border/50"
+                  className="flex items-center gap-2 sm:gap-2.5 py-1.5 pl-1.5 sm:pr-4 pr-2 bg-lc-dark hover:bg-lc-border rounded-full transition-all duration-200 border border-lc-border/50"
                 >
                   {profile.picture ? (
                     <img
@@ -92,7 +92,7 @@ export default function Navbar() {
                       {(profile.name || profile.displayName || 'N')[0].toUpperCase()}
                     </div>
                   )}
-                  <span className="text-sm text-lc-white font-medium max-w-[120px] truncate">
+                  <span className="hidden sm:inline text-sm text-lc-white font-medium max-w-[120px] truncate">
                     {profile.displayName || profile.name || 'Anon'}
                   </span>
                 </button>
