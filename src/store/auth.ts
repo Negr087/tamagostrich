@@ -17,6 +17,7 @@ interface AuthState {
   setUser: (user: NDKUser | null, method: LoginMethod | null, nip46Session?: Nip46Session) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  restoreSession: () => void;
   logout: () => void;
 }
 
@@ -56,6 +57,14 @@ export const useAuthStore = create<AuthState>()(
 
       setError: (error) => set({ error, isLoading: false }),
 
+      // Restore session from persisted profile (used on page load)
+      restoreSession: () => set((state) => {
+        if (state.profile) {
+          return { isConnected: true };
+        }
+        return {};
+      }),
+
       logout: () => {
         resetUserRelays();
         clearNip46Session();
@@ -72,7 +81,6 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'nostr-auth',
       partialize: (state) => ({
-        isConnected: state.isConnected,
         loginMethod: state.loginMethod,
         profile: state.profile,
         nip46Session: state.nip46Session,
