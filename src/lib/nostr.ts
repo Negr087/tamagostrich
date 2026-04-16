@@ -475,6 +475,58 @@ export async function fetchUserNotes(pubkey: string, limit = 50): Promise<NDKEve
   });
 }
 
+// ─── PET STATE SYNC (NIP-78 / kind 30078) ────────────────────────
+
+export interface PetStatePayload {
+  version: 1;
+  stats: { happiness: number; energy: number; social: number };
+  lastEventTime: number;
+  lastDecayTime: number;
+  activityLog: Array<{
+    id: string;
+    timestamp: number;
+    action: string;
+    message: string;
+    emoji: string;
+    senderPubkey?: string;
+  }>;
+}
+
+const PET_D_TAG = 'tamagostrich-pet-state';
+
+export async function publishPetState(payload: PetStatePayload): Promise<void> {
+  const ndk = getNDK();
+  if (!ndk.signer) return;
+
+  const event = new NDKEvent(ndk);
+  event.kind = 30078;
+  event.content = JSON.stringify(payload);
+  event.tags = [['d', PET_D_TAG]];
+
+  try {
+    await event.publish();
+  } catch (e) {
+    console.warn('[pet-sync] publish failed:', e);
+  }
+}
+
+export async function fetchPetState(pubkey: string): Promise<PetStatePayload | null> {
+  const ndk = getNDK();
+  try {
+    const events = await withTimeout(
+      ndk.fetchEvents({ kinds: [30078], '#d': [PET_D_TAG], authors: [pubkey], limit: 1 }),
+      8000
+    );
+    const event = Array.from(events).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
+    if (!event) return null;
+    const payload = JSON.parse(event.content) as PetStatePayload;
+    if (payload?.version !== 1) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 // Format pubkey for display
 export function formatPubkey(pubkey: string): string {
   const npub = nip19.npubEncode(pubkey);

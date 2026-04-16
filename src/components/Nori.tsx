@@ -476,7 +476,7 @@ function useIdleTime(lastEventTime: number) {
 
 export default function NoriTamagotchi() {
   const { isConnected, profile } = useAuthStore();
-  const { stats, mood, activityLog, isListening, lastEventTime } = useNoriStore();
+  const { stats, mood, activityLog, isListening, lastEventTime, loadFromNostr } = useNoriStore();
 
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -564,6 +564,11 @@ export default function NoriTamagotchi() {
     if (isConnected && pubkey) startNoriListener(pubkey);
     return () => stopNoriListener();
   }, [isConnected, pubkey]);
+
+  // Load pet state from Nostr on login (cross-device sync)
+  useEffect(() => {
+    if (isConnected && pubkey) loadFromNostr(pubkey);
+  }, [isConnected, pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Three.js scene
   useEffect(() => {

@@ -33,16 +33,40 @@ interface NoriState {
   lastEventTime: number;
   lastDecayTime: number;
   isListening: boolean;
+  isSyncingFromNostr: boolean;
 
   // Actions
   triggerAction: (action: NoriAction, detail?: string, senderPubkey?: string) => void;
   decayStats: () => void;
   setListening: (listening: boolean) => void;
   computeMood: () => NoriMood;
+  loadFromNostr: (pubkey: string) => Promise<void>;
 }
 
 function clamp(val: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, val));
+}
+
+// Debounced publish — fires 10s after the last stats change
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSync() {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    const state = useNoriStore.getState();
+    if (state.isSyncingFromNostr) return; // don't publish while loading
+    try {
+      const { publishPetState } = await import('@/lib/nostr');
+      await publishPetState({
+        version: 1,
+        stats: state.stats,
+        lastEventTime: state.lastEventTime,
+        lastDecayTime: state.lastDecayTime,
+        activityLog: state.activityLog.slice(0, 20),
+      });
+    } catch (e) {
+      console.warn('[pet-sync] sync failed:', e);
+    }
+  }, 10000);
 }
 
 const ACTION_EFFECTS: Record<NoriAction, { happiness: number; energy: number; social: number }> = {
@@ -90,6 +114,7 @@ export const useNoriStore = create<NoriState>()(
       lastEventTime: Date.now(),
       lastDecayTime: Date.now(),
       isListening: false,
+      isSyncingFromNostr: false,
 
       triggerAction: (action, detail, senderPubkey) => {
         const state = get();
@@ -120,6 +145,7 @@ export const useNoriStore = create<NoriState>()(
           lastEventTime: now,
           mood: computeMoodFromStats(newStats, now),
         });
+        scheduleSync();
       },
 
       decayStats: () => {
@@ -143,6 +169,7 @@ export const useNoriStore = create<NoriState>()(
           lastDecayTime: now,
           mood: computeMoodFromStats(newStats, state.lastEventTime),
         });
+        scheduleSync();
       },
 
       setListening: (listening) => set({ isListening: listening }),
@@ -150,6 +177,38 @@ export const useNoriStore = create<NoriState>()(
       computeMood: () => {
         const state = get();
         return computeMoodFromStats(state.stats, state.lastEventTime);
+      },
+
+      loadFromNostr: async (pubkey: string) => {
+        set({ isSyncingFromNostr: true });
+        try {
+          const { fetchPetState, connectNDK } = await import('@/lib/nostr');
+          await connectNDK();
+          const remote = await fetchPetState(pubkey);
+          if (!remote) return;
+
+          const local = get();
+          // Use remote state if it's more recent than local
+          if (remote.lastDecayTime > local.lastDecayTime || remote.lastEventTime > local.lastEventTime) {
+            set({
+              stats: {
+                happiness: clamp(remote.stats.happiness),
+                energy:    clamp(remote.stats.energy),
+                social:    clamp(remote.stats.social),
+              },
+              lastEventTime: remote.lastEventTime,
+              lastDecayTime: remote.lastDecayTime,
+              activityLog:   remote.activityLog as ActivityLogEntry[] || [],
+              mood: computeMoodFromStats(remote.stats, remote.lastEventTime),
+            });
+            // Apply decay accumulated since last sync
+            useNoriStore.getState().decayStats();
+          }
+        } catch (e) {
+          console.warn('[pet-sync] load failed:', e);
+        } finally {
+          set({ isSyncingFromNostr: false });
+        }
       },
     }),
     {
