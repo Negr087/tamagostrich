@@ -226,7 +226,7 @@ export default function Profile() {
       const data = await fetchZapsReceived(profile.pubkey);
       setZaps(data);
 
-      const uniquePubkeys = [...new Set(data.map((z) => z.senderPubkey))];
+      const uniquePubkeys = [...new Set(data.map((z) => z.senderPubkey).filter(Boolean))];
       const profiles = await fetchProfilesBatch(uniquePubkeys);
       setZapProfiles(profiles);
       setZapsLoaded(true);
@@ -507,7 +507,7 @@ export default function Profile() {
                     {/* Name + message */}
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-lc-white text-sm truncate">
-                        {sender?.displayName || sender?.name || `${zap.senderPubkey.slice(0, 8)}…`}
+                        {sender?.displayName || sender?.name || (zap.senderPubkey ? `${zap.senderPubkey.slice(0, 8)}…` : 'Anónimo')}
                       </div>
                       {zap.message ? (
                         <div className="text-xs text-lc-muted truncate mt-0.5">{zap.message}</div>

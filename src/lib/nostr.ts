@@ -597,42 +597,31 @@ export function parseZapReceipt(event: NDKEvent): ZapParsed {
 }
 
 export async function fetchZapsReceived(pubkey: string, limit = 100): Promise<ZapReceived[]> {
-  const ndk = getNDK();
+  const ndk = await connectNDK();
   await addUserRelays(pubkey);
 
-  // 90 days back
-  const since = Math.floor(Date.now() / 1000) - 90 * 24 * 60 * 60;
+  try {
+    const events = await Promise.race([
+      ndk.fetchEvents({ kinds: [9735], '#p': [pubkey], limit }),
+      new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 15000)),
+    ]);
 
-  return new Promise((resolve) => {
     const zaps: ZapReceived[] = [];
-
-    const sub = ndk.subscribe(
-      { kinds: [9735], '#p': [pubkey], limit, since },
-      { closeOnEose: true, groupable: false }
-    );
-
-    sub.on('event', (event: NDKEvent) => {
+    events.forEach((event: NDKEvent) => {
       const { senderPubkey, amountSats, message } = parseZapReceipt(event);
-      if (!senderPubkey) return; // can't show a zap without knowing who sent it
       zaps.push({
         id: event.id || '',
-        senderPubkey,
+        senderPubkey: senderPubkey || '',
         amountSats,
         message,
         createdAt: event.created_at || 0,
       });
     });
 
-    sub.on('eose', () => {
-      clearTimeout(timer);
-      resolve(zaps.sort((a, b) => b.createdAt - a.createdAt));
-    });
-
-    const timer = setTimeout(() => {
-      sub.stop();
-      resolve(zaps.sort((a, b) => b.createdAt - a.createdAt));
-    }, 12000);
-  });
+    return zaps.sort((a, b) => b.createdAt - a.createdAt);
+  } catch {
+    return [];
+  }
 }
 
 // Batch-fetch kind-0 profiles for a list of pubkeys in a single subscription.
