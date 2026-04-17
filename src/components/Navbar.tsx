@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { useNavStore } from '@/store/nav';
+import { useLang } from '@/lib/i18n';
 import LoginModal from './LoginModal';
 
 export default function Navbar() {
@@ -10,6 +11,7 @@ export default function Navbar() {
   const [showMenu, setShowMenu] = useState(false);
   const { isConnected, profile, logout } = useAuthStore();
   const { activeSection, setActiveSection } = useNavStore();
+  const { t, lang, setLang } = useLang();
 
   return (
     <>
@@ -37,17 +39,17 @@ export default function Navbar() {
           {isConnected && profile && (
             <div className="flex items-center gap-0.5 sm:gap-1">
               {([
-                { id: 'nori' as const, label: 'Mascota', icon: (
-                  <img src="/huella.png" alt="Mascota" width={20} height={20} style={{ filter: 'invert(85%) sepia(60%) saturate(500%) hue-rotate(40deg) brightness(1.1)', objectFit: 'contain' }} />
+                { id: 'nori' as const, label: t.navPet, icon: (
+                  <img src="/huella.png" alt={t.navPet} width={20} height={20} style={{ filter: 'invert(85%) sepia(60%) saturate(500%) hue-rotate(40deg) brightness(1.1)', objectFit: 'contain' }} />
                 )},
-                { id: 'profile' as const, label: 'Profile', icon: (
+                { id: 'profile' as const, label: t.navProfile, icon: (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b4f953" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
                     <circle cx="12" cy="7" r="4"/>
                   </svg>
                 )},
-                { id: 'badges' as const, label: 'Badges', icon: (
-                  <img src="/estrella.png" alt="Badges" width={20} height={20} style={{ filter: 'invert(85%) sepia(60%) saturate(500%) hue-rotate(40deg) brightness(1.1)', objectFit: 'contain' }} />
+                { id: 'badges' as const, label: t.navBadges, icon: (
+                  <img src="/estrella.png" alt={t.navBadges} width={20} height={20} style={{ filter: 'invert(85%) sepia(60%) saturate(500%) hue-rotate(40deg) brightness(1.1)', objectFit: 'contain' }} />
                 )},
               ]).map(({ id, label, icon }) => (
                 <button
@@ -74,7 +76,16 @@ export default function Navbar() {
           )}
 
           {/* Right side */}
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Language toggle */}
+            <button
+              onClick={() => setLang(lang === 'es' ? 'en' : 'es')}
+              className="text-xs font-bold px-2.5 py-1 rounded-lg border border-lc-border/50 text-lc-muted hover:text-lc-white hover:border-lc-border transition-all"
+              title={lang === 'es' ? 'Switch to English' : 'Cambiar a Español'}
+            >
+              {t.langToggle}
+            </button>
+
             {isConnected && profile ? (
               <div className="relative">
                 <button
@@ -121,7 +132,7 @@ export default function Navbar() {
                           <polyline points="16 17 21 12 16 7"/>
                           <line x1="21" y1="12" x2="9" y2="12"/>
                         </svg>
-                        Disconnect
+                        {t.disconnect}
                       </button>
                     </div>
                   </>
@@ -142,7 +153,7 @@ export default function Navbar() {
                   <polyline points="10 17 15 12 10 7"/>
                   <line x1="15" y1="12" x2="3" y2="12"/>
                 </svg>
-                Connect
+                {t.connect}
               </button>
             )}
           </div>

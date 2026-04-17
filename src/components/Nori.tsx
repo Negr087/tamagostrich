@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { useNoriStore, NoriAction, NoriMood } from '@/store/nori';
 import { startNoriListener, stopNoriListener } from '@/lib/noriEvents';
 import { getNDK } from '@/lib/nostr';
+import { useLang } from '@/lib/i18n';
 
 // ─── TYPES ───────────────────────────────────────────────────────
 
@@ -455,21 +456,22 @@ const MOOD_META: Record<NoriMood, { emoji: string; label: string; color: string 
 };
 
 function useIdleTime(lastEventTime: number) {
+  const { t } = useLang();
   const [idle, setIdle] = useState('');
   useEffect(() => {
     const update = () => {
       const diff = Date.now() - lastEventTime;
       const mins = Math.floor(diff / 60000);
       const hrs  = Math.floor(diff / 3600000);
-      if (mins < 1)       setIdle('ahora mismo');
-      else if (mins < 60) setIdle(`hace ${mins} min`);
-      else if (hrs < 24)  setIdle(`hace ${hrs} h`);
-      else                setIdle(`hace ${Math.floor(hrs / 24)} d`);
+      if (mins < 1)       setIdle(t.idleNow);
+      else if (mins < 60) setIdle(t.idleMins(mins));
+      else if (hrs < 24)  setIdle(t.idleHours(hrs));
+      else                setIdle(t.idleDays(hrs / 24));
     };
     update();
-    const t = setInterval(update, 30000);
-    return () => clearInterval(t);
-  }, [lastEventTime]);
+    const timer = setInterval(update, 30000);
+    return () => clearInterval(timer);
+  }, [lastEventTime, t]);
   return idle;
 }
 
@@ -478,6 +480,7 @@ function useIdleTime(lastEventTime: number) {
 export default function NoriTamagotchi() {
   const { isConnected, profile } = useAuthStore();
   const { stats, mood, activityLog, isListening, lastEventTime, loadFromNostr } = useNoriStore();
+  const { t } = useLang();
 
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -785,12 +788,12 @@ export default function NoriTamagotchi() {
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
             animation: 'gradientShift 3s linear infinite',
-          }}>Tu Mascota te espera</h2>
+          }}>{t.petWaitingTitle}</h2>
           <p className="font-bold text-lc-muted leading-relaxed mt-3">
-            <span className="block text-base">Tu mascota vive</span>
-            <span className="block text-lg">de tu actividad en Nostr.</span>
-            <span className="block text-xl">Zaps, reacciones y seguidores la mantienen feliz</span>
-            <span className="block text-2xl text-lc-muted">La vas a mantener viva?</span>
+            <span className="block text-base">{t.petWaitingLine1}</span>
+            <span className="block text-lg">{t.petWaitingLine2}</span>
+            <span className="block text-xl">{t.petWaitingLine3}</span>
+            <span className="block text-2xl text-lc-muted">{t.petWaitingLine4}</span>
           </p>
         </div>
       </div>
@@ -804,14 +807,14 @@ export default function NoriTamagotchi() {
         {/* Stats + Mood */}
         <div className="flex items-start justify-between mb-2 gap-4">
           <div className="flex-1 space-y-2 pt-1">
-            <StatBar label="Felicidad" value={stats.happiness} color="#4ade80" />
-            <StatBar label="Energía"   value={stats.energy}    color="#38bdf8" />
-            <StatBar label="Social"    value={stats.social}    color="#a78bfa" />
+            <StatBar label={t.statHappiness} value={stats.happiness} color="#4ade80" />
+            <StatBar label={t.statEnergy}    value={stats.energy}    color="#38bdf8" />
+            <StatBar label={t.statSocial}    value={stats.social}    color="#a78bfa" />
           </div>
           <div className="flex flex-col items-center gap-1 shrink-0 pt-1">
             <span className="text-3xl">{MOOD_META[mood].emoji}</span>
             <span className="text-[11px] font-semibold" style={{ color: MOOD_META[mood].color }}>
-              {MOOD_META[mood].label}
+              {t.moods[mood]}
             </span>
             <span className="text-[9px] text-lc-muted/60 tabular-nums">{idleTime}</span>
           </div>
@@ -830,7 +833,7 @@ export default function NoriTamagotchi() {
 
           {/* Drag hint */}
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] text-lc-muted/40 pointer-events-none select-none" style={{ zIndex: 20 }}>
-            Arrastrá · Scroll
+            {t.dragHint}
           </div>
 
           {/* Listening indicator */}
@@ -841,7 +844,7 @@ export default function NoriTamagotchi() {
               animation: isListening ? 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' : 'none',
             }} />
             <span className="text-[10px] font-medium" style={{ color: isListening ? '#b4f953' : '#555' }}>
-              {isListening ? 'conectado' : 'desconectado'}
+              {isListening ? t.connected : t.disconnected}
             </span>
           </div>
 
@@ -860,7 +863,8 @@ export default function NoriTamagotchi() {
 
         {/* Event chips */}
         <div className="mt-4 grid grid-cols-3 sm:grid-cols-6 gap-2">
-          {ACTION_BUTTONS.map(({ action, emoji, label }) => {
+          {ACTION_BUTTONS.map(({ action, emoji }) => {
+            const label = t.actions[action];
             const active = lastAction === action;
             return (
               <div key={label} className="lc-card p-3 flex flex-col items-center gap-1.5 text-center select-none transition-all duration-300"
@@ -880,11 +884,11 @@ export default function NoriTamagotchi() {
         {/* Activity log */}
         <div className="mt-6">
           <h3 className="text-[10px] font-bold text-lc-muted/60 uppercase tracking-[0.15em] mb-3">
-            Actividad Nostr
+            {t.activityTitle}
           </h3>
           <div className="space-y-0">
             {activityLog.length === 0 ? (
-              <p className="text-sm text-lc-muted/50 py-4 text-center">Tu Mascota está esperando actividad...</p>
+              <p className="text-sm text-lc-muted/50 py-4 text-center">{t.activityEmpty}</p>
             ) : (
               activityLog.slice(0, 8).map((entry) => (
                 <div key={entry.id} className="flex items-center gap-2 py-2 border-b border-lc-border/20 last:border-0">

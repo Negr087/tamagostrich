@@ -10,6 +10,7 @@ import {
   fetchUserNotes,
   formatTimestamp,
 } from '@/lib/nostr';
+import { useLang } from '@/lib/i18n';
 
 const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|avif|bmp)(\?[^\s]*)?$/i;
 const VIDEO_EXT = /\.(mp4|mov|webm|ogv|ogg)(\?[^\s]*)?$/i;
@@ -165,6 +166,7 @@ function ProfileSkeleton() {
 
 export default function Profile() {
   const { isConnected, profile } = useAuthStore();
+  const { t } = useLang();
   const [followersCount, setFollowersCount] = useState<number>(0);
   const [following, setFollowing] = useState<string[]>([]);
   const [notes, setNotes] = useState<NDKEvent[]>([]);
@@ -221,10 +223,10 @@ export default function Profile() {
             </svg>
           </div>
           <h1 className="text-4xl font-extrabold text-lc-white mb-3 tracking-tight">
-            Nostr Starter Kit
+            {t.profileConnectTitle}
           </h1>
           <p className="text-lg text-lc-muted mb-8">
-            Connect your identity to explore the decentralized social network
+            {t.profileConnectDesc}
           </p>
           <div className="flex items-center justify-center gap-3 text-sm text-lc-muted/70">
             <span className="flex items-center gap-1.5">
@@ -339,9 +341,9 @@ export default function Profile() {
         {/* Stats */}
         <div className="flex gap-1 mb-6">
           {[
-            { label: 'Following', value: following.length.toLocaleString(), loading: statsLoading.following },
-            { label: 'Followers', value: followersCount.toLocaleString(), loading: statsLoading.followers },
-            { label: 'Notes', value: notes.length >= 50 ? '50+' : notes.length, loading: statsLoading.notes },
+            { label: t.profileFollowing, value: following.length.toLocaleString(), loading: statsLoading.following },
+            { label: t.profileFollowers, value: followersCount.toLocaleString(), loading: statsLoading.followers },
+            { label: t.profileNotes,     value: notes.length >= 50 ? '50+' : notes.length, loading: statsLoading.notes },
           ].map((stat) => (
             <div key={stat.label} className="flex-1 py-3 px-4 bg-lc-dark rounded-xl text-center border border-lc-border/50">
               {stat.loading ? (
@@ -358,7 +360,7 @@ export default function Profile() {
 
         {/* Pubkey */}
         <div className="p-4 bg-lc-dark rounded-xl mb-6 border border-lc-border/50">
-          <div className="text-xs text-lc-muted mb-1.5 uppercase tracking-wider font-medium">Public Key</div>
+          <div className="text-xs text-lc-muted mb-1.5 uppercase tracking-wider font-medium">{t.profilePublicKey}</div>
           <div className="text-sm text-lc-white/70 font-mono break-all leading-relaxed">
             {profile.npub}
           </div>
@@ -367,17 +369,21 @@ export default function Profile() {
         {/* Tabs */}
         <div className="border-b border-lc-border mb-6">
           <div className="flex gap-0">
-            {(['posts', 'replies', 'likes'] as const).map((tab) => (
+            {([
+              { id: 'posts' as const,   label: t.profilePosts   },
+              { id: 'replies' as const, label: t.profileReplies },
+              { id: 'likes' as const,   label: t.profileLikes   },
+            ]).map(({ id, label }) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={id}
+                onClick={() => setActiveTab(id)}
                 className={`pb-3 px-5 text-sm font-medium transition-all border-b-2 -mb-px ${
-                  activeTab === tab
+                  activeTab === id
                     ? 'text-lc-green border-lc-green'
                     : 'text-lc-muted border-transparent hover:text-lc-white hover:border-lc-border'
                 }`}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {label}
               </button>
             ))}
           </div>
@@ -392,7 +398,7 @@ export default function Profile() {
                   <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                 </svg>
               </div>
-              <p className="text-lc-muted text-sm">No notes yet</p>
+              <p className="text-lc-muted text-sm">{t.profileNoNotes}</p>
             </div>
           ) : (
             notes.map((note) => (

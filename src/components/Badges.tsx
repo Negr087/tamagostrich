@@ -4,6 +4,7 @@ import { useEffect, useState, ImgHTMLAttributes } from 'react';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { useAuthStore } from '@/store/auth';
 import { getNDK, connectNDK } from '@/lib/nostr';
+import { useLang } from '@/lib/i18n';
 
 interface Badge {
   id: string;
@@ -51,6 +52,7 @@ function BadgesSkeleton() {
 
 export default function Badges() {
   const { isConnected, profile } = useAuthStore();
+  const { t } = useLang();
   const [badges, setBadges] = useState<Badge[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -123,8 +125,8 @@ export default function Badges() {
     <div className="min-h-screen pt-24">
       <div className="max-w-2xl mx-auto px-6">
         <div className="mb-8">
-          <h1 className="text-3xl font-extrabold text-lc-white tracking-tight">Badges</h1>
-          <p className="text-lc-muted mt-1">Nostr badges awarded to your profile (NIP-58)</p>
+          <h1 className="text-3xl font-extrabold text-lc-white tracking-tight">{t.badgesTitle}</h1>
+          <p className="text-lc-muted mt-1">{t.badgesSubtitle}</p>
         </div>
 
         {badges.length === 0 ? (
@@ -134,8 +136,8 @@ export default function Badges() {
                 <path d="M12 15l-2 5l9-6.5H13L15 2l-9 8.5h7z"/>
               </svg>
             </div>
-            <p className="text-lc-muted text-sm mb-1">No badges yet</p>
-            <p className="text-lc-muted/60 text-xs">Badges you receive from the Nostr network will appear here</p>
+            <p className="text-lc-muted text-sm mb-1">{t.badgesNone}</p>
+            <p className="text-lc-muted/60 text-xs">{t.badgesNoneDesc}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 pb-12">
