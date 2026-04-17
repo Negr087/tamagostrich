@@ -12,6 +12,8 @@ const POPULAR_RELAYS = [
   'wss://relay.snort.social',
   'wss://nostr.wine',
   'wss://nostr.mom',
+  'wss://nostr.bitcoiner.social',
+  'wss://relay.nostrplebs.com',
 ];
 
 // Global NDK instance
