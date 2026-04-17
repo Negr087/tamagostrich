@@ -25,6 +25,7 @@ const ACTION_TO_ANIM: Partial<Record<NoriAction, PetAnim>> = {
   mention_received:  'tilt',
   note_published:    'nod',
   reaction_received: 'pulse',
+  repost_received:   'nod',
   no_activity:       'sleep',
 };
 
@@ -33,6 +34,7 @@ const ACTION_TO_ANIM: Partial<Record<NoriAction, PetAnim>> = {
 const PARTICLE_CONFIG: Partial<Record<NoriAction, [number, number, number]>> = {
   zap_received:      [0xF5C518, 18, 1.2],
   reaction_received: [0xFF6B6B, 14, 1.0],
+  repost_received:   [0x4FC3F7, 12, 1.0],
   new_follower:      [0x7F77DD, 12, 1.0],
   mention_received:  [0x5DCAA5, 10, 1.0],
 };

@@ -113,7 +113,7 @@ export function startNoriListener(pubkey: string) {
         }
 
         case 6: {
-          trigger('reaction_received', 'reposteó tu nota', event.pubkey);
+          trigger('repost_received', 'reposteó tu nota', event.pubkey);
           break;
         }
 
