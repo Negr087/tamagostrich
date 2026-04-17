@@ -1,11 +1,14 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
-import Profile from '@/components/Profile';
-import Badges from '@/components/Badges';
 import NoriTamagotchi from '@/components/Nori';
 import { useAuthStore } from '@/store/auth';
 import { useNavStore } from '@/store/nav';
+
+// Lazy-load heavy sections — they only download when first visited
+const Profile = dynamic(() => import('@/components/Profile'), { ssr: false });
+const Badges  = dynamic(() => import('@/components/Badges'),  { ssr: false });
 
 export default function Home() {
   const { isConnected } = useAuthStore();

@@ -18,36 +18,48 @@ const POPULAR_RELAYS = [
 
 // Global NDK instance
 let ndkInstance: NDK | null = null;
+let ndkConnectPromise: Promise<NDK> | null = null;
 let userRelaysAdded = false;
+let addUserRelaysPromise: Promise<void> | null = null;
 
 export function getNDK(): NDK {
   if (!ndkInstance) {
     ndkInstance = new NDK({
       explicitRelayUrls: [...POPULAR_RELAYS],
     });
+    // Pre-warm: start connecting as soon as NDK is first accessed, don't wait
+    ndkConnectPromise = ndkInstance.connect(2000).then(() => ndkInstance!).catch(() => ndkInstance!);
   }
   return ndkInstance;
 }
 
 export async function connectNDK(): Promise<NDK> {
-  const ndk = getNDK();
-  await ndk.connect(5000);
+  const ndk = getNDK(); // triggers pre-warm if not already started
+  await ndkConnectPromise;
   return ndk;
 }
 
 export function resetUserRelays(): void {
   userRelaysAdded = false;
+  addUserRelaysPromise = null;
 }
 
-// Fetch user's preferred relays (NIP-65 kind 10002) and add them to NDK
+// Fetch user's preferred relays (NIP-65 kind 10002) and add them to NDK.
+// Deduped: concurrent callers share the same in-flight fetch.
 export async function addUserRelays(pubkey: string): Promise<void> {
   if (userRelaysAdded) return;
-  const ndk = getNDK();
+  if (!addUserRelaysPromise) {
+    addUserRelaysPromise = _addUserRelays(pubkey);
+  }
+  return addUserRelaysPromise;
+}
 
+async function _addUserRelays(pubkey: string): Promise<void> {
+  const ndk = getNDK();
   try {
     const relayListEvents = await withTimeout(
       ndk.fetchEvents({ kinds: [10002], authors: [pubkey], limit: 1 }),
-      5000
+      4000
     );
     const relayEvent = Array.from(relayListEvents)[0];
     if (relayEvent) {
@@ -66,6 +78,7 @@ export async function addUserRelays(pubkey: string): Promise<void> {
     userRelaysAdded = true;
   } catch {
     // timeout or error — continue with default relays
+    userRelaysAdded = true; // don't retry on next call, just use defaults
   }
 }
 
@@ -325,7 +338,7 @@ export async function fetchFollowersCount(pubkey: string): Promise<number> {
   try {
     const npub = nip19.npubEncode(pubkey);
     const res = await fetch(`https://api.nostr.band/v0/stats/profile/${npub}`, {
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(3000),
     });
     if (res.ok) {
       const data = await res.json();
@@ -359,7 +372,7 @@ export async function fetchFollowersCount(pubkey: string): Promise<number> {
     const timer = setTimeout(() => {
       sub.stop();
       resolve(count);
-    }, 12000);
+    }, 7000);
   });
 }
 
@@ -369,7 +382,7 @@ export async function fetchFollowing(pubkey: string): Promise<string[]> {
 
   try {
     const user = ndk.getUser({ pubkey });
-    const followSet = await withTimeout(user.follows(), 10000);
+    const followSet = await withTimeout(user.follows(), 6000);
     return Array.from(followSet).map((u) => u.pubkey);
   } catch {
     console.warn('fetchFollowing timed out');
@@ -403,7 +416,7 @@ export async function fetchUserNotes(pubkey: string, limit = 50): Promise<NDKEve
     const timer = setTimeout(() => {
       sub.stop();
       resolve(events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0)));
-    }, 10000);
+    }, 7000);
   });
 }
 
@@ -533,7 +546,7 @@ export async function fetchZapsReceived(pubkey: string, limit = 100): Promise<Za
   try {
     const events = await Promise.race([
       ndk.fetchEvents({ kinds: [9735], '#p': [pubkey], limit }),
-      new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 15000)),
+      new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 8000)),
     ]);
 
     const zaps: ZapReceived[] = [];
@@ -563,7 +576,7 @@ export async function fetchProfilesBatch(pubkeys: string[]): Promise<Record<stri
   try {
     const events = await Promise.race([
       ndk.fetchEvents({ kinds: [0], authors: pubkeys }),
-      new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 10000)),
+      new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 7000)),
     ]);
 
     events.forEach((event: NDKEvent) => {

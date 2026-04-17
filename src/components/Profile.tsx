@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, ImgHTMLAttributes } from 'react';
+import { useEffect, useState, useMemo, ImgHTMLAttributes } from 'react';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { useAuthStore } from '@/store/auth';
 import {
@@ -181,6 +181,22 @@ export default function Profile() {
   const [zapProfiles, setZapProfiles] = useState<Record<string, NostrProfile | null>>({});
   const [zapsLoading, setZapsLoading] = useState(false);
   const [zapsLoaded, setZapsLoaded] = useState(false);
+
+  // Extract all media URLs from notes — only recalculates when notes array changes
+  type MediaItem = { url: string; type: 'image' | 'video'; noteId: string };
+  const galleryMedia = useMemo<MediaItem[]>(() => {
+    const media: MediaItem[] = [];
+    notes.forEach((note) => {
+      let m: RegExpExecArray | null;
+      URL_REGEX.lastIndex = 0;
+      while ((m = URL_REGEX.exec(note.content)) !== null) {
+        const url = m[0].replace(/[.,!?;:]+$/, '');
+        if (IMAGE_EXT.test(url)) media.push({ url, type: 'image', noteId: note.id || '' });
+        else if (VIDEO_EXT.test(url)) media.push({ url, type: 'video', noteId: note.id || '' });
+      }
+    });
+    return media;
+  }, [notes]);
 
   useEffect(() => {
     if (isConnected && profile) {
@@ -533,18 +549,7 @@ export default function Profile() {
 
           {/* GALLERY */}
           {activeTab === 'gallery' && (() => {
-            // Extract all image/video URLs from notes
-            type MediaItem = { url: string; type: 'image' | 'video'; noteId: string };
-            const media: MediaItem[] = [];
-            notes.forEach((note) => {
-              let m: RegExpExecArray | null;
-              URL_REGEX.lastIndex = 0;
-              while ((m = URL_REGEX.exec(note.content)) !== null) {
-                const url = m[0].replace(/[.,!?;:]+$/, '');
-                if (IMAGE_EXT.test(url)) media.push({ url, type: 'image', noteId: note.id || '' });
-                else if (VIDEO_EXT.test(url)) media.push({ url, type: 'video', noteId: note.id || '' });
-              }
-            });
+            const media = galleryMedia;
 
             if (statsLoading.notes) {
               return (
