@@ -412,6 +412,7 @@ const ACTION_BUTTONS: { action: NoriAction; emoji: string; label: string }[] = [
   { action: 'zap_received',      emoji: '⚡', label: 'Recibir Zap' },
   { action: 'note_published',    emoji: '📝', label: 'Publicar nota' },
   { action: 'reaction_received', emoji: '🔥', label: 'Nueva reacción' },
+  { action: 'repost_received',   emoji: '🔁', label: 'Reposteo' },
   { action: 'no_activity',       emoji: '😴', label: 'Sin actividad' },
   { action: 'mention_received',  emoji: '💬', label: 'Te mencionaron' },
   { action: 'new_follower',      emoji: '🌟', label: 'Nuevo seguidor' },

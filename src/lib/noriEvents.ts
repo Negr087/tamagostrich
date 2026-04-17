@@ -57,16 +57,22 @@ export function startNoriListener(pubkey: string) {
 
     if (sessionId !== mySession) return;
 
+    // Use `since` so relays only send events from this session onward.
+    // Small 2-minute lookback covers the time spent connecting + fetching relays.
+    const since = listenerStartTime - 120;
+
     subscription = ndk.subscribe(
       [
         // Zap receipts to user
-        { kinds: [9735], '#p': [pubkey], limit: 0 },
+        { kinds: [9735], '#p': [pubkey], since },
         // Reactions to user's notes
-        { kinds: [7], '#p': [pubkey], limit: 0 },
+        { kinds: [7],    '#p': [pubkey], since },
+        // Reposts of user's notes
+        { kinds: [6],    '#p': [pubkey], since },
         // Contact lists that include user (new followers)
-        { kinds: [3], '#p': [pubkey], limit: 0 },
+        { kinds: [3],    '#p': [pubkey], since },
         // Mentions in notes
-        { kinds: [1], '#p': [pubkey], limit: 0 },
+        { kinds: [1],    '#p': [pubkey], since },
       ],
       { closeOnEose: false }
     );
@@ -79,10 +85,6 @@ export function startNoriListener(pubkey: string) {
       // Dedup
       if (seenEvents.has(event.id)) return;
       seenEvents.add(event.id);
-
-      // Only process events from the last 10 minutes (avoids replaying history on connect)
-      const now = Math.floor(Date.now() / 1000);
-      if (event.created_at && now - event.created_at > 600) return;
 
       const trigger = useNoriStore.getState().triggerAction;
 
@@ -126,6 +128,11 @@ export function startNoriListener(pubkey: string) {
           break;
         }
 
+        case 6: {
+          trigger('reaction_received', 'reposteó tu nota', event.pubkey);
+          break;
+        }
+
         case 1: {
           if (event.pubkey === pubkey) {
             trigger('note_published', 'publicaste una nota nueva');
@@ -162,6 +169,7 @@ export function simulateNoriEvent(action: NoriAction) {
     zap_received:      '⚡ 21 sats',
     note_published:    'publicaste una nota nueva',
     reaction_received: 'reaccionó 🔥',
+    repost_received:   'reposteó tu nota',
     no_activity:       'sin actividad reciente...',
     mention_received:  'te mencionó',
     new_follower:      'te siguió',

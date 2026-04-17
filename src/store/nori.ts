@@ -7,6 +7,7 @@ export type NoriAction =
   | 'zap_received'
   | 'note_published'
   | 'reaction_received'
+  | 'repost_received'
   | 'no_activity'
   | 'mention_received'
   | 'new_follower';
@@ -70,9 +71,10 @@ function scheduleSync() {
 }
 
 const ACTION_EFFECTS: Record<NoriAction, { happiness: number; energy: number; social: number }> = {
-  zap_received:      { happiness: 15, energy: 10, social: 5 },
+  zap_received:      { happiness: 15, energy: 10, social: 5  },
   note_published:    { happiness: 5,  energy: -5, social: 10 },
-  reaction_received: { happiness: 10, energy: 5,  social: 8 },
+  reaction_received: { happiness: 10, energy: 5,  social: 8  },
+  repost_received:   { happiness: 12, energy: 5,  social: 10 },
   no_activity:       { happiness: -5, energy: -4, social: -8 },
   mention_received:  { happiness: 8,  energy: 3,  social: 12 },
   new_follower:      { happiness: 12, energy: 5,  social: 15 },
@@ -82,6 +84,7 @@ const ACTION_META: Record<NoriAction, { emoji: string; messageTemplate: string }
   zap_received:      { emoji: '⚡', messageTemplate: 'Recibiste un zap' },
   note_published:    { emoji: '📝', messageTemplate: 'Publicaste una nota' },
   reaction_received: { emoji: '🔥', messageTemplate: 'Tu nota tiene reacciones' },
+  repost_received:   { emoji: '🔁', messageTemplate: 'Repostearon tu nota' },
   no_activity:       { emoji: '😴', messageTemplate: 'Sin actividad' },
   mention_received:  { emoji: '💬', messageTemplate: 'Te mencionaron' },
   new_follower:      { emoji: '🌟', messageTemplate: 'Nuevo seguidor' },
