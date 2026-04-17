@@ -537,41 +537,88 @@ export interface ZapReceived {
   createdAt: number;
 }
 
-export async function fetchZapsReceived(pubkey: string, limit = 30): Promise<ZapReceived[]> {
+// Decode amount (in sats) from a bolt11 invoice's human-readable prefix.
+// Format: ln<network><amount><multiplier>1...
+// Multipliers relative to 1 BTC (= 100_000_000 sats):
+//   m (milli)  = 0.001 BTC = 100_000 sats
+//   u (micro)  = 0.000001 BTC = 100 sats
+//   n (nano)   = 0.000000001 BTC = 0.1 sats
+//   p (pico)   = 0.000000000001 BTC = 0.0001 sats
+export function bolt11ToSats(bolt11: string): number {
+  const m = bolt11.toLowerCase().match(/^ln[a-z]+?(\d+)([munp])?1/);
+  if (!m) return 0;
+  const v = parseInt(m[1], 10);
+  switch (m[2]) {
+    case 'm': return Math.round(v * 100_000);
+    case 'u': return Math.round(v * 100);
+    case 'n': return Math.round(v * 0.1);
+    case 'p': return Math.round(v * 0.0001);
+    default:  return v * 100_000_000; // no multiplier = whole BTC (extremely rare)
+  }
+}
+
+// Parse a kind-9735 zap receipt: extract sender pubkey and amount in sats.
+// Priority: description tag (zap request) → P tag; amount tag → bolt11.
+export interface ZapParsed {
+  senderPubkey: string | undefined;
+  amountSats: number;
+  message?: string;
+}
+export function parseZapReceipt(event: NDKEvent): ZapParsed {
+  let senderPubkey: string | undefined;
+  let amountSats = 0;
+  let message: string | undefined;
+
+  try {
+    const descTag = event.tags.find((t) => t[0] === 'description');
+    if (descTag) {
+      const zapReq = JSON.parse(descTag[1]);
+      senderPubkey = zapReq.pubkey;
+      message = zapReq.content || undefined;
+      const amountTag = (zapReq.tags as string[][])?.find((t) => t[0] === 'amount');
+      if (amountTag) amountSats = Math.round(parseInt(amountTag[1], 10) / 1000);
+    }
+  } catch { /* malformed description */ }
+
+  // Fallback for sender: uppercase P tag (some wallets add it as a shortcut)
+  if (!senderPubkey) {
+    senderPubkey = event.tags.find((t) => t[0] === 'P')?.[1];
+  }
+
+  // Fallback for amount: decode bolt11 invoice
+  if (amountSats <= 0) {
+    const bolt11 = event.tags.find((t) => t[0] === 'bolt11')?.[1];
+    if (bolt11) amountSats = bolt11ToSats(bolt11);
+  }
+
+  return { senderPubkey, amountSats, message };
+}
+
+export async function fetchZapsReceived(pubkey: string, limit = 100): Promise<ZapReceived[]> {
   const ndk = getNDK();
   await addUserRelays(pubkey);
+
+  // 90 days back
+  const since = Math.floor(Date.now() / 1000) - 90 * 24 * 60 * 60;
 
   return new Promise((resolve) => {
     const zaps: ZapReceived[] = [];
 
     const sub = ndk.subscribe(
-      { kinds: [9735], '#p': [pubkey], limit },
+      { kinds: [9735], '#p': [pubkey], limit, since },
       { closeOnEose: true, groupable: false }
     );
 
     sub.on('event', (event: NDKEvent) => {
-      try {
-        const descTag = event.tags.find((t) => t[0] === 'description');
-        if (!descTag) return;
-
-        const zapRequest = JSON.parse(descTag[1]);
-        const senderPubkey: string = zapRequest.pubkey;
-        if (!senderPubkey) return;
-
-        // Amount tag in the zap request is in millisatoshis
-        const amountTag = (zapRequest.tags as string[][])?.find((t) => t[0] === 'amount');
-        const amountSats = amountTag ? Math.round(parseInt(amountTag[1], 10) / 1000) : 0;
-
-        zaps.push({
-          id: event.id || '',
-          senderPubkey,
-          amountSats,
-          message: zapRequest.content || undefined,
-          createdAt: event.created_at || 0,
-        });
-      } catch {
-        // skip malformed receipts
-      }
+      const { senderPubkey, amountSats, message } = parseZapReceipt(event);
+      if (!senderPubkey) return; // can't show a zap without knowing who sent it
+      zaps.push({
+        id: event.id || '',
+        senderPubkey,
+        amountSats,
+        message,
+        createdAt: event.created_at || 0,
+      });
     });
 
     sub.on('eose', () => {
@@ -582,8 +629,38 @@ export async function fetchZapsReceived(pubkey: string, limit = 30): Promise<Zap
     const timer = setTimeout(() => {
       sub.stop();
       resolve(zaps.sort((a, b) => b.createdAt - a.createdAt));
-    }, 10000);
+    }, 12000);
   });
+}
+
+// Batch-fetch kind-0 profiles for a list of pubkeys in a single subscription.
+export async function fetchProfilesBatch(pubkeys: string[]): Promise<Record<string, NostrProfile>> {
+  if (pubkeys.length === 0) return {};
+  const ndk = getNDK();
+  const map: Record<string, NostrProfile> = {};
+
+  try {
+    const events = await Promise.race([
+      ndk.fetchEvents({ kinds: [0], authors: pubkeys }),
+      new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 10000)),
+    ]);
+
+    events.forEach((event: NDKEvent) => {
+      try {
+        const content = JSON.parse(event.content);
+        // Build a minimal NDKUser-like object so parseProfile can read it
+        const user = ndk.getUser({ pubkey: event.pubkey });
+        user.profile = content;
+        map[event.pubkey] = parseProfile(user);
+      } catch {
+        // skip malformed kind-0
+      }
+    });
+  } catch {
+    // timeout — return whatever we collected
+  }
+
+  return map;
 }
 
 // Format pubkey for display

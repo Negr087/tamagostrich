@@ -9,8 +9,7 @@ import {
   fetchFollowing,
   fetchUserNotes,
   fetchZapsReceived,
-  getNDK,
-  parseProfile,
+  fetchProfilesBatch,
   formatTimestamp,
   type ZapReceived,
   type NostrProfile,
@@ -224,29 +223,12 @@ export default function Profile() {
     if (!profile || zapsLoaded) return;
     setZapsLoading(true);
     try {
-      const data = await fetchZapsReceived(profile.pubkey, 30);
+      const data = await fetchZapsReceived(profile.pubkey);
       setZaps(data);
 
       const uniquePubkeys = [...new Set(data.map((z) => z.senderPubkey))];
-      const ndk = getNDK();
-      const profileMap: Record<string, NostrProfile | null> = {};
-
-      await Promise.all(
-        uniquePubkeys.slice(0, 25).map(async (pk) => {
-          try {
-            const user = ndk.getUser({ pubkey: pk });
-            await Promise.race([
-              user.fetchProfile(),
-              new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-            ]);
-            profileMap[pk] = parseProfile(user);
-          } catch {
-            profileMap[pk] = null;
-          }
-        })
-      );
-
-      setZapProfiles(profileMap);
+      const profiles = await fetchProfilesBatch(uniquePubkeys);
+      setZapProfiles(profiles);
       setZapsLoaded(true);
     } catch (error) {
       console.error('Error loading zaps:', error);

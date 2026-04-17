@@ -1,4 +1,4 @@
-import { getNDK, connectNDK, addUserRelays } from '@/lib/nostr';
+import { getNDK, connectNDK, addUserRelays, parseZapReceipt } from '@/lib/nostr';
 import { useNoriStore, NoriAction } from '@/store/nori';
 import { NDKEvent, NDKSubscription } from '@nostr-dev-kit/ndk';
 import { nip19 } from 'nostr-tools';
@@ -58,8 +58,8 @@ export function startNoriListener(pubkey: string) {
     if (sessionId !== mySession) return;
 
     // Use `since` so relays only send events from this session onward.
-    // Small 2-minute lookback covers the time spent connecting + fetching relays.
-    const since = listenerStartTime - 120;
+    // 10-minute lookback covers connection time + any events that arrived just before the app opened.
+    const since = listenerStartTime - 600;
 
     subscription = ndk.subscribe(
       [
@@ -90,24 +90,8 @@ export function startNoriListener(pubkey: string) {
 
       switch (event.kind) {
         case 9735: {
-          // Zap receipt — try to parse amount from the embedded zap request
-          const senderPubkey = event.tags.find(t => t[0] === 'P')?.[1];
-          let detail = '⚡ zapó';
-
-          try {
-            const desc = event.tags.find(t => t[0] === 'description')?.[1];
-            if (desc) {
-              const zapReq = JSON.parse(desc);
-              const msats = zapReq.tags?.find((t: string[]) => t[0] === 'amount')?.[1];
-              if (msats) {
-                const sats = Math.round(Number(msats) / 1000);
-                detail = `⚡ ${sats} sats`;
-              }
-            }
-          } catch {
-            // fallback — keep generic detail
-          }
-
+          const { senderPubkey, amountSats } = parseZapReceipt(event);
+          const detail = amountSats > 0 ? `⚡ ${amountSats} sats` : '⚡ zapó';
           trigger('zap_received', detail, senderPubkey);
           break;
         }
