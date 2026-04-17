@@ -527,6 +527,65 @@ export async function fetchPetState(pubkey: string): Promise<PetStatePayload | n
   }
 }
 
+// ─── NIP-57 ZAPS (kind 9735) ────────────────────────────────────────
+
+export interface ZapReceived {
+  id: string;
+  senderPubkey: string;
+  amountSats: number;
+  message?: string;
+  createdAt: number;
+}
+
+export async function fetchZapsReceived(pubkey: string, limit = 30): Promise<ZapReceived[]> {
+  const ndk = getNDK();
+  await addUserRelays(pubkey);
+
+  return new Promise((resolve) => {
+    const zaps: ZapReceived[] = [];
+
+    const sub = ndk.subscribe(
+      { kinds: [9735], '#p': [pubkey], limit },
+      { closeOnEose: true, groupable: false }
+    );
+
+    sub.on('event', (event: NDKEvent) => {
+      try {
+        const descTag = event.tags.find((t) => t[0] === 'description');
+        if (!descTag) return;
+
+        const zapRequest = JSON.parse(descTag[1]);
+        const senderPubkey: string = zapRequest.pubkey;
+        if (!senderPubkey) return;
+
+        // Amount tag in the zap request is in millisatoshis
+        const amountTag = (zapRequest.tags as string[][])?.find((t) => t[0] === 'amount');
+        const amountSats = amountTag ? Math.round(parseInt(amountTag[1], 10) / 1000) : 0;
+
+        zaps.push({
+          id: event.id || '',
+          senderPubkey,
+          amountSats,
+          message: zapRequest.content || undefined,
+          createdAt: event.created_at || 0,
+        });
+      } catch {
+        // skip malformed receipts
+      }
+    });
+
+    sub.on('eose', () => {
+      clearTimeout(timer);
+      resolve(zaps.sort((a, b) => b.createdAt - a.createdAt));
+    });
+
+    const timer = setTimeout(() => {
+      sub.stop();
+      resolve(zaps.sort((a, b) => b.createdAt - a.createdAt));
+    }, 10000);
+  });
+}
+
 // Format pubkey for display
 export function formatPubkey(pubkey: string): string {
   const npub = nip19.npubEncode(pubkey);
