@@ -28,7 +28,7 @@ export function getNDK(): NDK {
       explicitRelayUrls: [...POPULAR_RELAYS],
     });
     // Pre-warm: start connecting as soon as NDK is first accessed, don't wait
-    ndkConnectPromise = ndkInstance.connect(2000).then(() => ndkInstance!).catch(() => ndkInstance!);
+    ndkConnectPromise = ndkInstance.connect(5000).then(() => ndkInstance!).catch(() => ndkInstance!);
   }
   return ndkInstance;
 }
@@ -382,7 +382,7 @@ export async function fetchFollowing(pubkey: string): Promise<string[]> {
 
   try {
     const user = ndk.getUser({ pubkey });
-    const followSet = await withTimeout(user.follows(), 6000);
+    const followSet = await withTimeout(user.follows(), 10000);
     return Array.from(followSet).map((u) => u.pubkey);
   } catch {
     console.warn('fetchFollowing timed out');
