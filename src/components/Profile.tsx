@@ -176,7 +176,7 @@ export default function Profile() {
   const [notes, setNotes] = useState<NDKEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState({ followers: true, following: true, notes: true });
-  const [activeTab, setActiveTab] = useState<'posts' | 'zaps' | 'likes'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'zaps' | 'gallery'>('posts');
   const [zaps, setZaps] = useState<ZapReceived[]>([]);
   const [zapProfiles, setZapProfiles] = useState<Record<string, NostrProfile | null>>({});
   const [zapsLoading, setZapsLoading] = useState(false);
@@ -237,7 +237,7 @@ export default function Profile() {
     }
   };
 
-  const handleTabChange = (tab: 'posts' | 'zaps' | 'likes') => {
+  const handleTabChange = (tab: 'posts' | 'zaps' | 'gallery') => {
     setActiveTab(tab);
     if (tab === 'zaps' && !zapsLoaded) {
       loadZaps();
@@ -403,9 +403,9 @@ export default function Profile() {
         <div className="border-b border-lc-border mb-6">
           <div className="flex gap-0">
             {([
-              { id: 'posts' as const, label: t.profilePosts },
-              { id: 'zaps'  as const, label: t.profileZaps  },
-              { id: 'likes' as const, label: t.profileLikes },
+              { id: 'posts'   as const, label: t.profilePosts   },
+              { id: 'zaps'    as const, label: t.profileZaps    },
+              { id: 'gallery' as const, label: t.profileGallery },
             ]).map(({ id, label }) => (
               <button
                 key={id}
@@ -531,17 +531,85 @@ export default function Profile() {
             )
           )}
 
-          {/* LIKES — placeholder */}
-          {activeTab === 'likes' && (
-            <div className="text-center py-12">
-              <div className="w-12 h-12 mx-auto mb-3 bg-lc-dark rounded-xl flex items-center justify-center">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="1.5">
-                  <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                </svg>
+          {/* GALLERY */}
+          {activeTab === 'gallery' && (() => {
+            // Extract all image/video URLs from notes
+            type MediaItem = { url: string; type: 'image' | 'video'; noteId: string };
+            const media: MediaItem[] = [];
+            notes.forEach((note) => {
+              let m: RegExpExecArray | null;
+              URL_REGEX.lastIndex = 0;
+              while ((m = URL_REGEX.exec(note.content)) !== null) {
+                const url = m[0].replace(/[.,!?;:]+$/, '');
+                if (IMAGE_EXT.test(url)) media.push({ url, type: 'image', noteId: note.id || '' });
+                else if (VIDEO_EXT.test(url)) media.push({ url, type: 'video', noteId: note.id || '' });
+              }
+            });
+
+            if (statsLoading.notes) {
+              return (
+                <div className="grid grid-cols-3 gap-1">
+                  {[1,2,3,4,5,6].map((i) => (
+                    <div key={i} className="lc-skeleton aspect-square rounded-lg" />
+                  ))}
+                </div>
+              );
+            }
+
+            if (media.length === 0) {
+              return (
+                <div className="text-center py-16">
+                  <div className="w-14 h-14 mx-auto mb-4 bg-lc-dark rounded-2xl flex items-center justify-center border border-lc-border/50">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </div>
+                  <p className="text-lc-muted text-sm mb-1">{t.profileGalleryEmpty}</p>
+                  <p className="text-lc-muted/60 text-xs">{t.profileGalleryEmptyDesc}</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-3 gap-1">
+                {media.map((item, idx) => (
+                  <a
+                    key={`${item.noteId}-${idx}`}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative aspect-square overflow-hidden rounded-lg bg-lc-dark group"
+                  >
+                    {item.type === 'image' ? (
+                      <img
+                        src={item.url}
+                        alt=""
+                        loading="lazy"
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.target as HTMLImageElement).closest('a')!.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <>
+                        <video
+                          src={item.url}
+                          className="w-full h-full object-cover"
+                          muted
+                          playsInline
+                          onError={(e) => { (e.target as HTMLVideoElement).closest('a')!.style.display = 'none'; }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/20 transition">
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="white" opacity="0.9">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                          </svg>
+                        </div>
+                      </>
+                    )}
+                  </a>
+                ))}
               </div>
-              <p className="text-lc-muted text-sm">{t.profileLikes}</p>
-            </div>
-          )}
+            );
+          })()}
 
         </div>
       </div>
