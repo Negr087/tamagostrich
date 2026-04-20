@@ -28,7 +28,7 @@ export default function Navbar() {
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
-                animation: 'gradientShift 3s linear infinite',
+                animation: 'gradientShift 5s linear infinite',
               }}
             >
               Tamagostrich
@@ -68,7 +68,7 @@ export default function Navbar() {
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     backgroundClip: 'text',
-                    animation: 'gradientShift 3s linear infinite',
+                    animation: 'gradientShift 5s linear infinite',
                   }}>{label}</span>
                 </button>
               ))}
@@ -145,7 +145,7 @@ export default function Navbar() {
                 style={{
                   background: 'linear-gradient(90deg, #d946ef, #a855f7, #b4f953)',
                   backgroundSize: '200% auto',
-                  animation: 'gradientShift 3s linear infinite',
+                  animation: 'gradientShift 5s linear infinite',
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

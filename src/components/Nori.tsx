@@ -789,7 +789,7 @@ export default function NoriTamagotchi() {
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
-            animation: 'gradientShift 3s linear infinite',
+            animation: 'gradientShift 5s linear infinite',
           }}>{t.petWaitingTitle}</h2>
           <p className="font-bold text-lc-muted leading-relaxed mt-3">
             <span className="block text-base">{t.petWaitingLine1}</span>

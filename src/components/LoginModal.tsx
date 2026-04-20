@@ -184,7 +184,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         style={{
           background: 'linear-gradient(90deg, #d946ef, #a855f7, #b4f953)',
           backgroundSize: '200% auto',
-          animation: 'gradientShift 3s linear infinite',
+          animation: 'gradientShift 5s linear infinite',
         }}
       >
       <div className="bg-lc-dark rounded-[14px] w-full p-8">
