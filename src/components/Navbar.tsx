@@ -52,7 +52,11 @@ export default function Navbar() {
                   <img src="/estrella.png" alt={t.navBadges} width={20} height={20} style={{ filter: 'invert(85%) sepia(60%) saturate(500%) hue-rotate(40deg) brightness(1.1)', objectFit: 'contain' }} />
                 )},
                 { id: 'goals' as const, label: t.navGoals, icon: (
-                  <span style={{ fontSize: 20, lineHeight: 1 }}>🎯</span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b4f953" strokeWidth="1.5" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="6"/>
+                    <circle cx="12" cy="12" r="2"/>
+                  </svg>
                 )},
               ]).map(({ id, label, icon }) => (
                 <button
