@@ -32,7 +32,7 @@ export function levelProgress(xp: number, level: number) {
   return { current, needed, pct: Math.min(100, needed > 0 ? (current / needed) * 100 : 100) };
 }
 
-export interface ActionCounts {
+export interface ActionCounts extends Record<string, number> {
   zap_received: number;
   note_published: number;
   reaction_received: number;
@@ -84,6 +84,7 @@ interface GoalsState {
   recentUnlocks: string[];
 
   recordAction: (action: NoriAction) => void;
+  loadFromSync: (remote: { xp: number; level: number; unlockedAchievements: string[]; actionCounts: Record<string, number>; lastActiveDay: string | null; streakDays: number }) => void;
   clearNotifications: () => void;
   reset: () => void;
 }
@@ -146,6 +147,36 @@ export const useGoalsStore = create<GoalsState>()(
           unlockedAchievements: [...s.unlockedAchievements, ...newAchievements],
           justLeveledUp: leveledUp,
           recentUnlocks: newAchievements,
+        });
+      },
+
+      loadFromSync: (remote) => {
+        const s = get();
+        // Take max XP — whichever device is further ahead wins
+        const newXP = Math.max(s.xp, remote.xp);
+        if (newXP === s.xp && remote.unlockedAchievements.every(id => s.unlockedAchievements.includes(id))) return;
+
+        const newLevel = xpToLevel(newXP);
+        // Merge action counts: max per action
+        const newCounts = { ...s.actionCounts };
+        for (const [k, v] of Object.entries(remote.actionCounts)) {
+          if (k in newCounts) newCounts[k as keyof ActionCounts] = Math.max(newCounts[k as keyof ActionCounts], v);
+        }
+        // Union achievements
+        const allAchievements = [...new Set([...s.unlockedAchievements, ...remote.unlockedAchievements])];
+        // Max streak + most recent active day
+        const newStreak = Math.max(s.streakDays, remote.streakDays);
+        const newLastActive = (!s.lastActiveDay || (remote.lastActiveDay && remote.lastActiveDay > s.lastActiveDay))
+          ? remote.lastActiveDay
+          : s.lastActiveDay;
+
+        set({
+          xp: newXP,
+          level: newLevel,
+          actionCounts: newCounts,
+          unlockedAchievements: allAchievements,
+          streakDays: newStreak,
+          lastActiveDay: newLastActive,
         });
       },
 

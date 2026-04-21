@@ -435,6 +435,14 @@ export interface PetStatePayload {
     emoji: string;
     senderPubkey?: string;
   }>;
+  goals?: {
+    xp: number;
+    level: number;
+    unlockedAchievements: string[];
+    actionCounts: Record<string, number>;
+    lastActiveDay: string | null;
+    streakDays: number;
+  };
 }
 
 const PET_D_TAG = 'tamagostrich-pet-state';

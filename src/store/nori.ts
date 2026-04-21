@@ -59,12 +59,21 @@ function scheduleSync() {
     if (state.isSyncingFromNostr) return; // don't publish while loading
     try {
       const { publishPetState } = await import('@/lib/nostr');
+      const goals = useGoalsStore.getState();
       await publishPetState({
         version: 1,
         stats: state.stats,
         lastEventTime: state.lastEventTime,
         lastDecayTime: state.lastDecayTime,
         activityLog: state.activityLog.slice(0, 20),
+        goals: {
+          xp: goals.xp,
+          level: goals.level,
+          unlockedAchievements: goals.unlockedAchievements,
+          actionCounts: goals.actionCounts,
+          lastActiveDay: goals.lastActiveDay,
+          streakDays: goals.streakDays,
+        },
       });
     } catch (e) {
       console.warn('[pet-sync] sync failed:', e);
@@ -222,6 +231,10 @@ export const useNoriStore = create<NoriState>()(
           } else {
             // Local is more recent — publish it so other devices can sync
             scheduleSync();
+          }
+          // Always merge goals — take the best of both devices regardless of which is newer
+          if (remote.goals) {
+            useGoalsStore.getState().loadFromSync(remote.goals);
           }
         } catch (e) {
           console.warn('[pet-sync] load failed:', e);
