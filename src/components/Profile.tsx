@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, ImgHTMLAttributes } from 'react';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { useAuthStore } from '@/store/auth';
+import { useProfileCache } from '@/store/profileCache';
 import {
   connectNDK,
   fetchFollowersCount,
@@ -171,16 +172,13 @@ function ProfileSkeleton() {
 export default function Profile() {
   const { isConnected, profile } = useAuthStore();
   const { t } = useLang();
-  const [followersCount, setFollowersCount] = useState<number>(0);
-  const [following, setFollowing] = useState<string[]>([]);
-  const [notes, setNotes] = useState<NDKEvent[]>([]);
+  const cache = useProfileCache();
   const [loading, setLoading] = useState(false);
-  const [statsLoading, setStatsLoading] = useState({ followers: true, following: true, notes: true });
   const [activeTab, setActiveTab] = useState<'posts' | 'zaps' | 'gallery'>('posts');
-  const [zaps, setZaps] = useState<ZapReceived[]>([]);
-  const [zapProfiles, setZapProfiles] = useState<Record<string, NostrProfile | null>>({});
   const [zapsLoading, setZapsLoading] = useState(false);
-  const [zapsLoaded, setZapsLoaded] = useState(false);
+
+  // Aliases for readability
+  const { notes, following, followersCount, zaps, zapProfiles, statsLoading } = cache;
 
   // Extract all media URLs from notes — only recalculates when notes array changes
   type MediaItem = { url: string; type: 'image' | 'video'; noteId: string };
@@ -199,53 +197,52 @@ export default function Profile() {
   }, [notes]);
 
   useEffect(() => {
-    if (isConnected && profile) {
-      loadProfileData();
-    }
-  }, [isConnected, profile]);
+    if (!isConnected || !profile) return;
+    // Skip fetch if data is already cached for this pubkey
+    if (cache.loaded && cache.pubkey === profile.pubkey) return;
+    loadProfileData();
+  }, [isConnected, profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadProfileData = async () => {
     if (!profile) return;
 
     setLoading(true);
-    setStatsLoading({ followers: true, following: true, notes: true });
+    cache.setStatsLoading({ followers: true, following: true, notes: true });
     try {
       await connectNDK();
       setLoading(false);
 
       // Load each stat independently so they show as they arrive
       fetchFollowing(profile.pubkey).then((data) => {
-        setFollowing(data);
-        setStatsLoading((s) => ({ ...s, following: false }));
+        cache.setFollowing(data);
+        cache.setStatsLoading({ following: false });
       });
 
       fetchFollowersCount(profile.pubkey).then((count) => {
-        setFollowersCount(count);
-        setStatsLoading((s) => ({ ...s, followers: false }));
+        cache.setFollowersCount(count);
+        cache.setStatsLoading({ followers: false });
       });
 
       fetchUserNotes(profile.pubkey, 50).then((data) => {
-        setNotes(data);
-        setStatsLoading((s) => ({ ...s, notes: false }));
+        cache.setNotes(data);
+        cache.setStatsLoading({ notes: false });
+        cache.markLoaded(profile.pubkey);
       });
     } catch (error) {
       console.error('Error loading profile data:', error);
       setLoading(false);
-      setStatsLoading({ followers: false, following: false, notes: false });
+      cache.setStatsLoading({ followers: false, following: false, notes: false });
     }
   };
 
   const loadZaps = async () => {
-    if (!profile || zapsLoaded) return;
+    if (!profile || cache.zapsLoaded) return;
     setZapsLoading(true);
     try {
       const data = await fetchZapsReceived(profile.pubkey);
-      setZaps(data);
-
       const uniquePubkeys = [...new Set(data.map((z) => z.senderPubkey).filter(Boolean))];
       const profiles = await fetchProfilesBatch(uniquePubkeys);
-      setZapProfiles(profiles);
-      setZapsLoaded(true);
+      cache.setZaps(data, profiles);
     } catch (error) {
       console.error('Error loading zaps:', error);
     } finally {
@@ -255,7 +252,7 @@ export default function Profile() {
 
   const handleTabChange = (tab: 'posts' | 'zaps' | 'gallery') => {
     setActiveTab(tab);
-    if (tab === 'zaps' && !zapsLoaded) {
+    if (tab === 'zaps' && !cache.zapsLoaded) {
       loadZaps();
     }
   };

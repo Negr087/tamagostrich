@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 import { NDKUser } from '@nostr-dev-kit/ndk';
 import { NostrProfile, parseProfile, LoginMethod, resetUserRelays, clearNip46Session } from '@/lib/nostr';
 import type { Nip46Session } from '@/lib/nostr';
+import { useProfileCache } from './profileCache';
+import { useBadgesCache } from './badgesCache';
 
 interface AuthState {
   isConnected: boolean;
@@ -68,6 +70,8 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         resetUserRelays();
         clearNip46Session();
+        useProfileCache.getState().reset();
+        useBadgesCache.getState().reset();
         set({
           isConnected: false,
           user: null,

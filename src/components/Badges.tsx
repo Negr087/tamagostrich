@@ -3,17 +3,11 @@
 import { useEffect, useState, ImgHTMLAttributes } from 'react';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { useAuthStore } from '@/store/auth';
+import { useBadgesCache } from '@/store/badgesCache';
 import { getNDK, connectNDK } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
 
-interface Badge {
-  id: string;
-  name: string;
-  description: string;
-  image?: string;
-  thumb?: string;
-  creator: string;
-}
+import type { Badge } from '@/store/badgesCache';
 
 function SkeletonImg(props: ImgHTMLAttributes<HTMLImageElement>) {
   const [loaded, setLoaded] = useState(false);
@@ -53,14 +47,15 @@ function BadgesSkeleton() {
 export default function Badges() {
   const { isConnected, profile } = useAuthStore();
   const { t } = useLang();
-  const [badges, setBadges] = useState<Badge[]>([]);
+  const cache = useBadgesCache();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isConnected && profile) {
-      loadBadges();
-    }
-  }, [isConnected, profile]);
+    if (!isConnected || !profile) return;
+    // Skip fetch if data is already cached for this pubkey
+    if (cache.loaded && cache.pubkey === profile.pubkey) return;
+    loadBadges();
+  }, [isConnected, profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadBadges = async () => {
     if (!profile) return;
@@ -107,7 +102,7 @@ export default function Badges() {
         }
       }
 
-      setBadges(parsedBadges);
+      cache.setBadges(parsedBadges, profile.pubkey);
     } catch (error) {
       console.error('Error loading badges:', error);
     } finally {
@@ -129,7 +124,7 @@ export default function Badges() {
           <p className="text-lc-muted mt-1">{t.badgesSubtitle}</p>
         </div>
 
-        {badges.length === 0 ? (
+        {cache.badges.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-16 h-16 mx-auto mb-4 bg-lc-dark rounded-2xl flex items-center justify-center border border-lc-border/50">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="1.5">
@@ -141,7 +136,7 @@ export default function Badges() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 pb-12">
-            {badges.map((badge) => (
+            {cache.badges.map((badge) => (
               <div key={badge.id} className="lc-card p-4 flex flex-col items-center text-center">
                 {(badge.thumb || badge.image) ? (
                   <div className="w-20 h-20 rounded-xl overflow-hidden mb-3">
