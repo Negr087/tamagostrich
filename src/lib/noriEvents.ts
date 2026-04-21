@@ -44,22 +44,26 @@ export function startNoriListener(pubkey: string) {
 
     if (sessionId !== mySession) return;
 
-    // Cargar seguidores actuales para no notificar falsamente los que ya seguían
+    // Cargar seguidores actuales para no notificar falsamente los que ya seguían.
+    // Timeout generoso (12s) para no perder seguidores por relay lento.
     try {
       const existing = await Promise.race([
         ndk.fetchEvents({ kinds: [3], '#p': [pubkey] }),
-        new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 7000)),
+        new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 12000)),
       ]);
       existing.forEach(e => knownFollowers.add(e.pubkey));
     } catch {
-      // no fatal — en el peor caso puede haber algún falso positivo al inicio
+      // non-fatal
     }
 
     if (sessionId !== mySession) return;
 
-    // Use `since` so relays only send events from this session onward.
-    // 10-minute lookback covers connection time + any events that arrived just before the app opened.
+    // 10-minute lookback for interactions (zaps, reactions, etc.)
+    // For kind:3 (followers) we use NO lookback — only events published after the listener
+    // started. Any relay replaying old contact-list updates would cause false "new follower"
+    // notifications for users who already follow and just updated their contact list.
     const since = listenerStartTime - 600;
+    const followerSince = listenerStartTime; // no lookback for follows
 
     subscription = ndk.subscribe(
       [
@@ -69,8 +73,8 @@ export function startNoriListener(pubkey: string) {
         { kinds: [7],    '#p': [pubkey], since },
         // Reposts of user's notes
         { kinds: [6],    '#p': [pubkey], since },
-        // Contact lists that include user (new followers)
-        { kinds: [3],    '#p': [pubkey], since },
+        // Contact lists that include user — tight window to avoid replay of existing followers
+        { kinds: [3],    '#p': [pubkey], since: followerSince },
         // Mentions in notes
         { kinds: [1],    '#p': [pubkey], since },
       ],
@@ -103,9 +107,11 @@ export function startNoriListener(pubkey: string) {
         }
 
         case 3: {
-          // Ignorar eventos que existían antes de conectar (relays que replayan historia)
-          if (event.created_at && event.created_at < listenerStartTime - 30) break;
-          // Ignorar si ya era seguidor conocido
+          // Defensa secundaria: ignorar eventos con created_at anterior al listener
+          // (algunos relays no respetan el `since` del filtro). 10s de tolerancia para
+          // diferencias de reloj entre cliente y relay.
+          if (event.created_at && event.created_at < listenerStartTime - 10) break;
+          // Ignorar si ya era seguidor conocido (double-check por si el relay ignoró `since`)
           if (knownFollowers.has(event.pubkey)) break;
           knownFollowers.add(event.pubkey);
           trigger('new_follower', undefined, event.pubkey);
