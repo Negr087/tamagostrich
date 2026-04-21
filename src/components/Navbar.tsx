@@ -51,6 +51,9 @@ export default function Navbar() {
                 { id: 'badges' as const, label: t.navBadges, icon: (
                   <img src="/estrella.png" alt={t.navBadges} width={20} height={20} style={{ filter: 'invert(85%) sepia(60%) saturate(500%) hue-rotate(40deg) brightness(1.1)', objectFit: 'contain' }} />
                 )},
+                { id: 'goals' as const, label: t.navGoals, icon: (
+                  <span style={{ fontSize: 20, lineHeight: 1 }}>🎯</span>
+                )},
               ]).map(({ id, label, icon }) => (
                 <button
                   key={id}

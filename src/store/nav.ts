@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Section = 'nori' | 'profile' | 'badges';
+export type Section = 'nori' | 'profile' | 'badges' | 'goals';
 
 interface NavState {
   activeSection: Section;

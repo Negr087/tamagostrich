@@ -10,8 +10,9 @@ import { useNavStore, Section } from '@/store/nav';
 // Lazy-load heavy sections — they only download when first visited
 const Profile = dynamic(() => import('@/components/Profile'), { ssr: false });
 const Badges  = dynamic(() => import('@/components/Badges'),  { ssr: false });
+const Goals   = dynamic(() => import('@/components/Goals'),   { ssr: false });
 
-const VALID_SECTIONS: Section[] = ['nori', 'profile', 'badges'];
+const VALID_SECTIONS: Section[] = ['nori', 'profile', 'badges', 'goals'];
 
 export default function Home() {
   const { isConnected } = useAuthStore();
@@ -39,6 +40,8 @@ export default function Home() {
         <Profile />
       ) : activeSection === 'badges' ? (
         <Badges />
+      ) : activeSection === 'goals' ? (
+        <Goals />
       ) : null}
     </main>
   );
