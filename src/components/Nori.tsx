@@ -549,7 +549,11 @@ export default function NoriTamagotchi() {
     setPetAnim(anim);
     setAnimKey(k => k + 1);
 
-    setSpeechText(activityLog[0].message);
+    const entry0 = activityLog[0];
+    const speech = entry0.detail
+      ? `${t.actions[entry0.action]} · ${entry0.detail}`
+      : t.actions[entry0.action];
+    setSpeechText(speech);
     setSpeechVisible(true);
     if (clearSpeech.current) clearTimeout(clearSpeech.current);
     clearSpeech.current = setTimeout(() => setSpeechVisible(false), 2800);
@@ -900,7 +904,9 @@ export default function NoriTamagotchi() {
                   ) : (
                     <span className="text-sm shrink-0">{entry.emoji}</span>
                   )}
-                  <span className="text-xs text-lc-muted truncate">{entry.message}</span>
+                  <span className="text-xs text-lc-muted truncate">
+                    {t.actions[entry.action]}{entry.detail ? ` · ${entry.detail}` : ''}
+                  </span>
                 </div>
               ))
             )}

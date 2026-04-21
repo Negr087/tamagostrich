@@ -16,7 +16,8 @@ export interface ActivityLogEntry {
   id: string;
   timestamp: number;
   action: NoriAction;
-  message: string;
+  message: string;     // kept for Nostr sync compat
+  detail?: string;     // language-neutral extra data (e.g. "21 sats", "🔥")
   emoji: string;
   senderPubkey?: string; // hex pubkey of who triggered the event (absent for own actions)
 }
@@ -81,13 +82,13 @@ const ACTION_EFFECTS: Record<NoriAction, { happiness: number; energy: number; so
 };
 
 const ACTION_META: Record<NoriAction, { emoji: string; messageTemplate: string }> = {
-  zap_received:      { emoji: '⚡', messageTemplate: 'Recibiste un zap' },
-  note_published:    { emoji: '📝', messageTemplate: 'Publicaste una nota' },
-  reaction_received: { emoji: '🔥', messageTemplate: 'Tu nota tiene reacciones' },
-  repost_received:   { emoji: '🔁', messageTemplate: 'Repostearon tu nota' },
-  no_activity:       { emoji: '😴', messageTemplate: 'Sin actividad' },
-  mention_received:  { emoji: '💬', messageTemplate: 'Te mencionaron' },
-  new_follower:      { emoji: '🌟', messageTemplate: 'Nuevo seguidor' },
+  zap_received:      { emoji: '⚡', messageTemplate: 'Zap received' },
+  note_published:    { emoji: '📝', messageTemplate: 'Note published' },
+  reaction_received: { emoji: '🔥', messageTemplate: 'Reaction received' },
+  repost_received:   { emoji: '🔁', messageTemplate: 'Repost received' },
+  no_activity:       { emoji: '😴', messageTemplate: 'No activity' },
+  mention_received:  { emoji: '💬', messageTemplate: 'Mentioned you' },
+  new_follower:      { emoji: '🌟', messageTemplate: 'New follower' },
 };
 
 function computeMoodFromStats(stats: NoriStats, lastEventTime: number): NoriMood {
@@ -135,6 +136,7 @@ export const useNoriStore = create<NoriState>()(
           timestamp: Date.now(),
           action,
           message: detail || meta.messageTemplate,
+          detail,
           emoji: meta.emoji,
           senderPubkey,
         };

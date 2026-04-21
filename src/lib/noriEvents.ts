@@ -28,7 +28,7 @@ export function startNoriListener(pubkey: string) {
     const s = useNoriStore.getState();
     const idleMin = (Date.now() - s.lastEventTime) / 60000;
     if (idleMin >= 5) {
-      s.triggerAction('no_activity', 'sin actividad reciente...');
+      s.triggerAction('no_activity', undefined);
     }
   }, 60000);
 
@@ -91,14 +91,14 @@ export function startNoriListener(pubkey: string) {
       switch (event.kind) {
         case 9735: {
           const { senderPubkey, amountSats } = parseZapReceipt(event);
-          const detail = amountSats > 0 ? `⚡ ${amountSats} sats` : '⚡ zapó';
+          const detail = amountSats > 0 ? `${amountSats} sats` : undefined;
           trigger('zap_received', detail, senderPubkey);
           break;
         }
 
         case 7: {
           const content = event.content || '❤️';
-          trigger('reaction_received', `reaccionó ${content}`, event.pubkey);
+          trigger('reaction_received', content, event.pubkey);
           break;
         }
 
@@ -108,20 +108,20 @@ export function startNoriListener(pubkey: string) {
           // Ignorar si ya era seguidor conocido
           if (knownFollowers.has(event.pubkey)) break;
           knownFollowers.add(event.pubkey);
-          trigger('new_follower', 'te siguió', event.pubkey);
+          trigger('new_follower', undefined, event.pubkey);
           break;
         }
 
         case 6: {
-          trigger('repost_received', 'reposteó tu nota', event.pubkey);
+          trigger('repost_received', undefined, event.pubkey);
           break;
         }
 
         case 1: {
           if (event.pubkey === pubkey) {
-            trigger('note_published', 'publicaste una nota nueva');
+            trigger('note_published', undefined);
           } else {
-            trigger('mention_received', 'te mencionó', event.pubkey);
+            trigger('mention_received', undefined, event.pubkey);
           }
           break;
         }
@@ -149,14 +149,9 @@ export function stopNoriListener() {
 // Simulate events for demo/testing
 export function simulateNoriEvent(action: NoriAction) {
   const store = useNoriStore.getState();
-  const messages: Record<NoriAction, string> = {
-    zap_received:      '⚡ 21 sats',
-    note_published:    'publicaste una nota nueva',
-    reaction_received: 'reaccionó 🔥',
-    repost_received:   'reposteó tu nota',
-    no_activity:       'sin actividad reciente...',
-    mention_received:  'te mencionó',
-    new_follower:      'te siguió',
+  const details: Partial<Record<NoriAction, string>> = {
+    zap_received:      '21 sats',
+    reaction_received: '🔥',
   };
-  store.triggerAction(action, messages[action]);
+  store.triggerAction(action, details[action]);
 }

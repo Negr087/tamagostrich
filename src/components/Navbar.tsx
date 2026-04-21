@@ -54,7 +54,7 @@ export default function Navbar() {
               ]).map(({ id, label, icon }) => (
                 <button
                   key={id}
-                  onClick={() => setActiveSection(id)}
+                  onClick={() => { setActiveSection(id); window.location.hash = id; }}
                   className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                     activeSection === id
                       ? 'bg-lc-border/60'
