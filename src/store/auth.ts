@@ -5,6 +5,7 @@ import { NostrProfile, parseProfile, LoginMethod, resetUserRelays, clearNip46Ses
 import type { Nip46Session } from '@/lib/nostr';
 import { useProfileCache } from './profileCache';
 import { useBadgesCache } from './badgesCache';
+import { useGoalsStore } from './goals';
 
 interface AuthState {
   isConnected: boolean;
@@ -72,6 +73,7 @@ export const useAuthStore = create<AuthState>()(
         clearNip46Session();
         useProfileCache.getState().reset();
         useBadgesCache.getState().reset();
+        useGoalsStore.getState().reset();
         set({
           isConnected: false,
           user: null,

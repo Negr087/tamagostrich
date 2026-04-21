@@ -75,6 +75,18 @@ export const T = {
     profileConnectTitle: 'Tamagostrich',
     profileConnectDesc: 'Conectá tu identidad para explorar la red social descentralizada',
 
+    // Goals
+    goalsTitle: 'Objetivos',
+    goalsSubtitle: 'Tu progreso en la identidad Nostr',
+    goalsLevel: 'Nivel',
+    goalsXPTotal: 'XP total',
+    goalsStreak: (n: number) => `${n} día${n !== 1 ? 's' : ''} de racha`,
+    goalsNextLevel: (n: number) => `Próximo: Nivel ${n}`,
+    goalsMaxLevel: '¡Nivel máximo!',
+    goalsAchievements: 'Logros',
+    goalsUnlocked: '✓ Desbloqueado',
+    goalsLevelUp: (n: number) => `¡Nivel ${n}! 🎉`,
+
     // Badges
     badgesTitle: 'Insignias',
     badgesSubtitle: 'Insignias Nostr otorgadas a tu perfil (NIP-58)',
@@ -154,6 +166,18 @@ export const T = {
     profileSats: 'sats',
     profileConnectTitle: 'Tamagostrich',
     profileConnectDesc: 'Connect your identity to explore the decentralized social network',
+
+    // Goals
+    goalsTitle: 'Goals',
+    goalsSubtitle: 'Your Nostr identity progress',
+    goalsLevel: 'Level',
+    goalsXPTotal: 'Total XP',
+    goalsStreak: (n: number) => `${n}-day streak`,
+    goalsNextLevel: (n: number) => `Next: Level ${n}`,
+    goalsMaxLevel: 'Max level!',
+    goalsAchievements: 'Achievements',
+    goalsUnlocked: '✓ Unlocked',
+    goalsLevelUp: (n: number) => `Level ${n}! 🎉`,
 
     // Badges
     badgesTitle: 'Badges',

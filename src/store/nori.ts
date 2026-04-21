@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useGoalsStore } from './goals';
 
 export type NoriMood = 'happy' | 'excited' | 'resting' | 'sleeping' | 'sad' | 'social';
 
@@ -151,6 +152,7 @@ export const useNoriStore = create<NoriState>()(
           mood: computeMoodFromStats(newStats, now),
         });
         scheduleSync();
+        useGoalsStore.getState().recordAction(action);
       },
 
       decayStats: () => {

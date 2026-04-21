@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { nip19 } from 'nostr-tools';
 import { useAuthStore } from '@/store/auth';
 import { useNoriStore, NoriAction, NoriMood } from '@/store/nori';
+import { useGoalsStore, ACHIEVEMENTS } from '@/store/goals';
 import { startNoriListener, stopNoriListener } from '@/lib/noriEvents';
 import { getNDK } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
@@ -482,7 +483,8 @@ function useIdleTime(lastEventTime: number) {
 export default function NoriTamagotchi() {
   const { isConnected, profile } = useAuthStore();
   const { stats, mood, activityLog, isListening, lastEventTime, loadFromNostr } = useNoriStore();
-  const { t } = useLang();
+  const { level, justLeveledUp, recentUnlocks, clearNotifications } = useGoalsStore();
+  const { t, lang } = useLang();
 
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -567,6 +569,32 @@ export default function NoriTamagotchi() {
       setAnimKey(k => k + 1);
     }, 4000);
   }, [activityLog]);
+
+  // Level-up and achievement notifications
+  useEffect(() => {
+    if (!justLeveledUp && recentUnlocks.length === 0) return;
+    clearNotifications();
+
+    if (justLeveledUp) {
+      const speech = t.goalsLevelUp(level);
+      setSpeechText(speech);
+      setSpeechVisible(true);
+      setPetAnim('spin');
+      setAnimKey(k => k + 1);
+      if (clearSpeech.current) clearTimeout(clearSpeech.current);
+      clearSpeech.current = setTimeout(() => setSpeechVisible(false), 3500);
+      if (clearRef.current) clearTimeout(clearRef.current);
+      clearRef.current = setTimeout(() => { setPetAnim('bob'); setAnimKey(k => k + 1); }, 4000);
+    } else if (recentUnlocks.length > 0) {
+      const ach = ACHIEVEMENTS.find(a => a.id === recentUnlocks[0]);
+      if (ach) {
+        setSpeechText(`${ach.emoji} ${lang === 'es' ? ach.nameEs : ach.nameEn}`);
+        setSpeechVisible(true);
+        if (clearSpeech.current) clearTimeout(clearSpeech.current);
+        clearSpeech.current = setTimeout(() => setSpeechVisible(false), 3000);
+      }
+    }
+  }, [justLeveledUp, recentUnlocks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nostr listener
   const pubkey = profile?.pubkey;
@@ -823,6 +851,7 @@ export default function NoriTamagotchi() {
               {t.moods[mood]}
             </span>
             <span className="text-[9px] text-lc-muted/60 tabular-nums">{idleTime}</span>
+            <span className="text-[10px] font-bold text-lc-green tracking-wide">Lv.{level}</span>
           </div>
         </div>
 
@@ -868,7 +897,7 @@ export default function NoriTamagotchi() {
         </div>
 
         {/* Event chips */}
-        <div className="mt-4 grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <div className="mt-4 grid grid-cols-4 sm:grid-cols-7 gap-2">
           {ACTION_BUTTONS.map(({ action, emoji }) => {
             const label = t.actions[action];
             const active = lastAction === action;
