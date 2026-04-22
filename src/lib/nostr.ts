@@ -451,23 +451,10 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
   const ndk = getNDK();
   if (!ndk.signer) return;
 
-  const selfUser = await ndk.signer.user();
-  const plaintext = JSON.stringify(payload);
-
-  let content: string;
-  let encrypted = false;
-  try {
-    content = await ndk.signer.encrypt(selfUser, plaintext, 'nip44');
-    encrypted = true;
-  } catch {
-    // Signer doesn't support nip44 (e.g. some NIP-46 bunkers) — fall back to plaintext
-    content = plaintext;
-  }
-
   const event = new NDKEvent(ndk);
   event.kind = 30078;
-  event.content = content;
-  event.tags = [['d', PET_D_TAG], ...(encrypted ? [['enc', 'nip44']] : [])];
+  event.content = JSON.stringify(payload);
+  event.tags = [['d', PET_D_TAG]];
 
   try {
     await event.publish();
@@ -485,22 +472,7 @@ export async function fetchPetState(pubkey: string): Promise<PetStatePayload | n
     );
     const event = Array.from(events).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
     if (!event) return null;
-
-    const isEncrypted = event.tags.some(t => t[0] === 'enc' && t[1] === 'nip44');
-    let raw: string;
-
-    if (isEncrypted && ndk.signer) {
-      try {
-        const selfUser = await ndk.signer.user();
-        raw = await ndk.signer.decrypt(selfUser, event.content, 'nip44');
-      } catch {
-        return null; // can't decrypt — wrong account or signer unavailable
-      }
-    } else {
-      raw = event.content;
-    }
-
-    const payload = JSON.parse(raw) as PetStatePayload;
+    const payload = JSON.parse(event.content) as PetStatePayload;
     if (payload?.version !== 1) return null;
     return payload;
   } catch {
