@@ -6,19 +6,14 @@ import { nip19 } from 'nostr-tools';
 import { useAuthStore } from '@/store/auth';
 import { useNoriStore, NoriAction, NoriMood } from '@/store/nori';
 import { useGoalsStore, ACHIEVEMENTS } from '@/store/goals';
+import { useAppearanceStore, PALETTE } from '@/store/appearance';
+import { buildAnimal, animatePet, makePetMats, PetParts, PetMats, PetAnim, ANIMAL_META } from '@/lib/petModels';
 import { startNoriListener, stopNoriListener } from '@/lib/noriEvents';
 import { getNDK } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
+import PetSelector from './PetSelector';
 
-// ─── TYPES ───────────────────────────────────────────────────────
-
-interface EventParticle {
-  mesh: THREE.Mesh;
-  vel: THREE.Vector3;
-  life: number;
-}
-
-type PetAnim = 'bob' | 'sleep' | 'zap' | 'spin' | 'tilt' | 'nod' | 'pulse';
+// ─── TYPES ───────────────────────────────────────────────────────────
 
 const ACTION_TO_ANIM: Partial<Record<NoriAction, PetAnim>> = {
   zap_received:      'zap',
@@ -30,7 +25,13 @@ const ACTION_TO_ANIM: Partial<Record<NoriAction, PetAnim>> = {
   no_activity:       'sleep',
 };
 
-// ─── EVENT PARTICLES ──────────────────────────────────────────────
+// ─── EVENT PARTICLES ─────────────────────────────────────────────────
+
+interface EventParticle {
+  mesh: THREE.Mesh;
+  vel: THREE.Vector3;
+  life: number;
+}
 
 const PARTICLE_CONFIG: Partial<Record<NoriAction, [number, number, number]>> = {
   zap_received:      [0xF5C518, 18, 1.2],
@@ -70,327 +71,7 @@ function spawnEventParticles(
   }
 }
 
-// ─── MATERIALS ────────────────────────────────────────────────────
-
-function makeMats() {
-  return {
-    purple:     new THREE.MeshStandardMaterial({ color: 0x9370DB, roughness: 0.4, metalness: 0.05 }),
-    darkPurple: new THREE.MeshStandardMaterial({ color: 0x7B5EA7, roughness: 0.5, metalness: 0.05 }),
-    beak:       new THREE.MeshStandardMaterial({ color: 0xF5A623, roughness: 0.3, metalness: 0.1  }),
-    eyeWhite:   new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.2, metalness: 0.0  }),
-    eyePupil:   new THREE.MeshStandardMaterial({ color: 0x2D1B69, roughness: 0.1, metalness: 0.3  }),
-    eyeIris:    new THREE.MeshStandardMaterial({ color: 0x8B5CF6, roughness: 0.15,metalness: 0.2  }),
-    leg:        new THREE.MeshStandardMaterial({ color: 0xF5A623, roughness: 0.5, metalness: 0.0  }),
-    tongue:     new THREE.MeshStandardMaterial({ color: 0xFF6B8A, roughness: 0.4, metalness: 0.0  }),
-  };
-}
-
-type Mats = ReturnType<typeof makeMats>;
-
-// ─── BUILD OSTRICH ────────────────────────────────────────────────
-
-interface OstrichParts {
-  bird:       THREE.Group;
-  head:       THREE.Mesh;
-  hairGroup:  THREE.Group;
-  beakGroup:  THREE.Group;
-  legL:       THREE.Group;
-  legR:       THREE.Group;
-  shadow:     THREE.Mesh;
-}
-
-function buildOstrich(scene: THREE.Scene, m: Mats): OstrichParts {
-  const bird = new THREE.Group();
-
-  // Body
-  const bodyGeo = new THREE.SphereGeometry(1.3, 32, 32);
-  bodyGeo.scale(1, 0.85, 0.9);
-  const body = new THREE.Mesh(bodyGeo, m.purple);
-  body.position.set(0, 1.8, 0);
-  body.castShadow = true;
-  bird.add(body);
-
-  // Feather tufts around body
-  function createFeatherTuft(x: number, y: number, z: number, scale: number) {
-    const grp = new THREE.Group();
-    for (let i = 0; i < 5; i++) {
-      const geo = new THREE.SphereGeometry(0.18 * scale, 12, 12);
-      geo.scale(1, 1.3, 0.8);
-      const mesh = new THREE.Mesh(geo, m.darkPurple);
-      const angle = (i / 5) * Math.PI * 0.8 - Math.PI * 0.4;
-      mesh.position.set(Math.sin(angle) * 0.15 * scale, Math.cos(angle) * 0.15 * scale, 0);
-      mesh.rotation.z = angle * 0.5;
-      mesh.castShadow = true;
-      grp.add(mesh);
-    }
-    grp.position.set(x, y, z);
-    return grp;
-  }
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    bird.add(createFeatherTuft(Math.sin(angle) * 1.1, 1.4, Math.cos(angle) * 0.8, 1.2));
-  }
-
-  // Neck (segmented)
-  const neckGroup = new THREE.Group();
-  for (let i = 0; i < 6; i++) {
-    const t = i / 6;
-    const geo = new THREE.SphereGeometry(0.35 - t * 0.08, 16, 16);
-    const seg = new THREE.Mesh(geo, m.purple);
-    seg.position.set(0, 2.5 + t * 1.5, -0.1 + t * 0.2);
-    seg.castShadow = true;
-    neckGroup.add(seg);
-  }
-  bird.add(neckGroup);
-
-  // Head
-  const headGeo = new THREE.SphereGeometry(0.6, 32, 32);
-  headGeo.scale(1, 0.9, 0.95);
-  const head = new THREE.Mesh(headGeo, m.purple);
-  head.position.set(0, 4.3, 0.15);
-  head.castShadow = true;
-  bird.add(head);
-
-  // Hair tufts
-  const hairGroup = new THREE.Group();
-  for (let i = 0; i < 7; i++) {
-    const geo = new THREE.SphereGeometry(0.08, 8, 8);
-    geo.scale(0.6, 2.2, 0.6);
-    const hair = new THREE.Mesh(geo, m.darkPurple);
-    const angle = (i / 7) * Math.PI - Math.PI * 0.5;
-    hair.position.set(
-      Math.sin(angle) * 0.25,
-      4.85 + Math.random() * 0.2,
-      0.15 + Math.cos(angle) * 0.1
-    );
-    hair.rotation.z = angle * 0.4;
-    hair.rotation.x = -0.2;
-    hairGroup.add(hair);
-  }
-  bird.add(hairGroup);
-
-  // Eyebrows
-  function createEyebrow(side: number) {
-    const shape = new THREE.Shape();
-    shape.moveTo(0, 0);
-    shape.quadraticCurveTo(0.15, 0.12, 0.35, 0.05);
-    shape.quadraticCurveTo(0.15, 0.08, 0, 0);
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.04, bevelEnabled: false });
-    const brow = new THREE.Mesh(geo, m.darkPurple);
-    brow.position.set(side * 0.1, 4.65, 0.5);
-    brow.rotation.y = side * 0.3;
-    brow.rotation.z = side * -0.2;
-    brow.scale.x = side;
-    return brow;
-  }
-  bird.add(createEyebrow(1));
-  bird.add(createEyebrow(-1));
-
-  // Eyes
-  function createEye(side: number) {
-    const eyeGroup = new THREE.Group();
-
-    const whiteGeo = new THREE.SphereGeometry(0.22, 24, 24);
-    whiteGeo.scale(1, 1.1, 0.6);
-    eyeGroup.add(new THREE.Mesh(whiteGeo, m.eyeWhite));
-
-    const irisGeo = new THREE.SphereGeometry(0.14, 20, 20);
-    irisGeo.scale(1, 1, 0.5);
-    const iris = new THREE.Mesh(irisGeo, m.eyeIris);
-    iris.position.z = 0.08;
-    eyeGroup.add(iris);
-
-    const pupilGeo = new THREE.SphereGeometry(0.08, 16, 16);
-    pupilGeo.scale(1, 1, 0.4);
-    const pupil = new THREE.Mesh(pupilGeo, m.eyePupil);
-    pupil.position.z = 0.12;
-    eyeGroup.add(pupil);
-
-    const shine = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
-    );
-    shine.position.set(0.04, 0.05, 0.15);
-    eyeGroup.add(shine);
-
-    eyeGroup.position.set(side * 0.35, 4.4, 0.4);
-    eyeGroup.rotation.y = side * 0.25;
-    return eyeGroup;
-  }
-  bird.add(createEye(1));
-  bird.add(createEye(-1));
-
-  // Beak
-  const beakGroup = new THREE.Group();
-  const upperBeakGeo = new THREE.SphereGeometry(0.25, 16, 16);
-  upperBeakGeo.scale(1.2, 0.5, 1.8);
-  const upperBeak = new THREE.Mesh(upperBeakGeo, m.beak);
-  upperBeak.position.set(0, 4.15, 0.7);
-  beakGroup.add(upperBeak);                              // index 0
-
-  const lowerBeakGeo = new THREE.SphereGeometry(0.2, 16, 16);
-  lowerBeakGeo.scale(1, 0.35, 1.5);
-  const lowerBeak = new THREE.Mesh(lowerBeakGeo, m.beak);
-  lowerBeak.position.set(0, 4.0, 0.65);
-  beakGroup.add(lowerBeak);                             // index 1
-
-  const tongueGeo = new THREE.SphereGeometry(0.1, 12, 12);
-  tongueGeo.scale(0.8, 0.4, 1.5);
-  const tongue = new THREE.Mesh(tongueGeo, m.tongue);
-  tongue.position.set(0, 3.95, 0.85);
-  beakGroup.add(tongue);
-  bird.add(beakGroup);
-
-  // Legs
-  function createLeg(side: number): THREE.Group {
-    const legGroup = new THREE.Group();
-
-    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 1.0, 12), m.leg);
-    upper.position.set(side * 0.4, 0.7, 0);
-    upper.rotation.z = side * 0.15;
-    upper.castShadow = true;
-    legGroup.add(upper);
-
-    const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.8, 12), m.leg);
-    lower.position.set(side * 0.5, 0.15, 0.05);
-    lower.castShadow = true;
-    legGroup.add(lower);
-
-    for (let t = -1; t <= 1; t++) {
-      const toeGeo = new THREE.SphereGeometry(0.06, 8, 8);
-      toeGeo.scale(0.8, 0.4, 2.0);
-      const toe = new THREE.Mesh(toeGeo, m.leg);
-      toe.position.set(side * 0.5 + t * 0.08, -0.15, 0.15 + Math.abs(t) * -0.05);
-      toe.castShadow = true;
-      legGroup.add(toe);
-    }
-    return legGroup;
-  }
-  const legR = createLeg(1);
-  const legL = createLeg(-1);
-  bird.add(legR);
-  bird.add(legL);
-
-  // Wings
-  function createWing(side: number) {
-    const wingGroup = new THREE.Group();
-    for (let i = 0; i < 6; i++) {
-      const geo = new THREE.SphereGeometry(0.2, 12, 12);
-      geo.scale(0.7, 1.2, 0.6);
-      const feather = new THREE.Mesh(geo, m.darkPurple);
-      const angle = (i / 6) * Math.PI * 0.5;
-      feather.position.set(side * (1.2 + Math.sin(angle) * 0.2), 2.0 - i * 0.15, -0.1);
-      feather.rotation.z = side * (0.3 + i * 0.08);
-      feather.castShadow = true;
-      wingGroup.add(feather);
-    }
-    return wingGroup;
-  }
-  bird.add(createWing(1));
-  bird.add(createWing(-1));
-
-  // Tail feathers
-  for (let i = 0; i < 5; i++) {
-    const geo = new THREE.SphereGeometry(0.18, 12, 12);
-    geo.scale(0.6, 1.3, 0.8);
-    const feather = new THREE.Mesh(geo, m.darkPurple);
-    const angle = (i / 5) * Math.PI * 0.6 - Math.PI * 0.3;
-    feather.position.set(Math.sin(angle) * 0.3, 1.5 + Math.cos(angle) * 0.15, -0.9);
-    feather.rotation.x = 0.4;
-    feather.rotation.z = angle * 0.3;
-    feather.castShadow = true;
-    bird.add(feather);
-  }
-
-  scene.add(bird);
-
-  // Shadow under bird
-  const shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(1.5, 32),
-    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
-  );
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = -0.18;
-  scene.add(shadow);
-
-  return { bird, head, hairGroup, beakGroup, legL, legR, shadow };
-}
-
-// ─── ANIMATE OSTRICH ─────────────────────────────────────────────
-
-function animateOstrich(
-  t: number,
-  elapsed: number,
-  anim: PetAnim,
-  p: OstrichParts
-) {
-  // Always: breathing beak + hair sway (run regardless of reactive anim)
-  (p.beakGroup.children[1] as THREE.Mesh).position.y = 4.0 + Math.sin(t * 3) * 0.02;
-  p.hairGroup.children.forEach((h, i) => {
-    h.rotation.z = Math.sin(t * 2 + i * 0.5) * 0.15;
-  });
-
-  // Reset root
-  p.bird.rotation.set(0, 0, 0);
-  p.bird.scale.setScalar(1);
-  p.legL.rotation.set(0, 0, 0);
-  p.legR.rotation.set(0, 0, 0);
-
-  switch (anim) {
-    case 'bob': {
-      const s = Math.sin(t * 1.5);
-      p.bird.position.y = s * 0.1;
-      p.bird.rotation.z = Math.sin(t * 0.8) * 0.03;
-      p.bird.rotation.x = Math.sin(t * 1.2) * 0.02;
-      // Leg walk cycle
-      p.legL.rotation.x =  Math.sin(t * 1.5) * 0.18;
-      p.legR.rotation.x = -Math.sin(t * 1.5) * 0.18;
-      break;
-    }
-    case 'sleep': {
-      p.bird.position.y = 0;
-      p.bird.rotation.z = 0.1 + Math.sin(t * 0.8) * 0.04;
-      p.head.rotation.x = 0.45;
-      break;
-    }
-    case 'zap': {
-      const prog = Math.min(elapsed / 0.9, 1);
-      p.bird.position.y = Math.sin(prog * Math.PI) * 1.1;
-      p.bird.rotation.z = Math.sin(prog * Math.PI * 2.5) * 0.14;
-      p.legL.rotation.x = Math.sin(prog * Math.PI) * 0.45;
-      p.legR.rotation.x = Math.sin(prog * Math.PI) * 0.45;
-      break;
-    }
-    case 'spin': {
-      const prog = Math.min(elapsed / 1.0, 1);
-      const ease = prog < 0.5 ? 2 * prog * prog : -1 + (4 - 2 * prog) * prog;
-      p.bird.rotation.y   = ease * Math.PI * 2;
-      p.bird.position.y   = Math.sin(prog * Math.PI) * 0.15;
-      break;
-    }
-    case 'tilt': {
-      const prog  = Math.min(elapsed / 0.7, 1);
-      const angle = Math.sin(prog * Math.PI * 2) * 0.38;
-      p.bird.position.y = 0;
-      p.bird.rotation.z = angle;
-      break;
-    }
-    case 'nod': {
-      const prog = Math.min(elapsed / 0.8, 1);
-      p.bird.position.y = 0;
-      p.head.rotation.x = Math.sin(prog * Math.PI * 4) * 0.45;
-      break;
-    }
-    case 'pulse': {
-      const prog = Math.min(elapsed / 0.6, 1);
-      p.bird.position.y = 0;
-      p.bird.scale.setScalar(1 + Math.sin(prog * Math.PI * 4) * 0.11);
-      break;
-    }
-  }
-}
-
-// ─── STAT BAR ────────────────────────────────────────────────────
+// ─── STAT BAR ────────────────────────────────────────────────────────
 
 function StatBar({ label, value, color }: { label: string; value: number; color: string }) {
   const isCritical = value < 25;
@@ -478,17 +159,20 @@ function useIdleTime(lastEventTime: number) {
   return idle;
 }
 
-// ─── MAIN COMPONENT ──────────────────────────────────────────────
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────
 
 export default function NoriTamagotchi() {
   const { isConnected, profile } = useAuthStore();
   const { stats, mood, activityLog, isListening, lastEventTime, loadFromNostr } = useNoriStore();
   const { level, justLeveledUp, recentUnlocks, clearNotifications } = useGoalsStore();
+  const { bodyColor, animalType, setBodyColor } = useAppearanceStore();
   const { t, lang } = useLang();
 
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const spawnRef     = useRef<((color: number, count: number, spread: number) => void) | null>(null);
+  const matsRef      = useRef<PetMats | null>(null);
+  const partsRef     = useRef<PetParts | null>(null);
   const lastLogRef   = useRef<string>('');
   const clearRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearSpeech  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -502,6 +186,8 @@ export default function NoriTamagotchi() {
   const [lastAction, setLastAction]         = useState<NoriAction | null>(null);
   const [petAnim, setPetAnim]               = useState<PetAnim>('bob');
   const [animKey, setAnimKey]               = useState(0);
+  const [paletteOpen, setPaletteOpen]       = useState(false);
+  const [selectorOpen, setSelectorOpen]     = useState(false);
   const idleTime = useIdleTime(lastEventTime);
   const fetchingSet = useRef<Set<string>>(new Set());
 
@@ -510,6 +196,16 @@ export default function NoriTamagotchi() {
     petAnimRef.current   = petAnim;
     animStartRef.current = performance.now() / 1000;
   }, [animKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live-update materials when body color changes (no scene rebuild needed)
+  useEffect(() => {
+    const m = matsRef.current;
+    if (!m) return;
+    const base = new THREE.Color(bodyColor);
+    const dark = base.clone().multiplyScalar(0.78);
+    m.body.color.copy(base);
+    m.dark.color.copy(dark);
+  }, [bodyColor]);
 
   // Fetch NDK profiles for senders
   useEffect(() => {
@@ -543,7 +239,6 @@ export default function NoriTamagotchi() {
     lastLogRef.current = activityLog[0].id;
 
     const action = activityLog[0].action;
-
     const cfg = PARTICLE_CONFIG[action];
     if (cfg && spawnRef.current) spawnRef.current(...cfg);
 
@@ -576,8 +271,7 @@ export default function NoriTamagotchi() {
     clearNotifications();
 
     if (justLeveledUp) {
-      const speech = t.goalsLevelUp(level);
-      setSpeechText(speech);
+      setSpeechText(t.goalsLevelUp(level));
       setSpeechVisible(true);
       setPetAnim('spin');
       setAnimKey(k => k + 1);
@@ -603,12 +297,12 @@ export default function NoriTamagotchi() {
     return () => stopNoriListener();
   }, [isConnected, pubkey]);
 
-  // Load pet state from Nostr on login (cross-device sync)
+  // Load pet state from Nostr on login
   useEffect(() => {
     if (isConnected && pubkey) loadFromNostr(pubkey);
   }, [isConnected, pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Three.js scene
+  // Three.js scene — rebuilds when animal type changes
   useEffect(() => {
     if (!isConnected || !profile) return;
     const canvas = canvasRef.current;
@@ -627,14 +321,11 @@ export default function NoriTamagotchi() {
       initialized = true;
       ro.disconnect();
 
-      // Scene
       const scene = new THREE.Scene();
       scene.fog = new THREE.FogExp2(0x0d0d1a, 0.012);
 
-      // Camera
       const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 1000);
 
-      // Renderer
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       renderer.setSize(w, h);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -644,7 +335,6 @@ export default function NoriTamagotchi() {
       renderer.toneMappingExposure = 1.2;
       renderer.outputColorSpace    = THREE.SRGBColorSpace;
 
-      // Lights (same as HTML)
       scene.add(new THREE.AmbientLight(0x404060, 0.6));
 
       const mainLight = new THREE.DirectionalLight(0xffeedd, 1.2);
@@ -661,11 +351,8 @@ export default function NoriTamagotchi() {
       fillLight.position.set(0, 5, 5);
       scene.add(fillLight);
 
-      const bottomLight = new THREE.PointLight(0xF5A623, 0.3, 10);
-      bottomLight.position.set(0, 0, 3);
-      scene.add(bottomLight);
+      scene.add(new THREE.PointLight(0xF5A623, 0.3, 10)).position.set(0, 0, 3);
 
-      // Ground
       const ground = new THREE.Mesh(
         new THREE.CircleGeometry(15, 64),
         new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8, metalness: 0.2 })
@@ -675,7 +362,6 @@ export default function NoriTamagotchi() {
       ground.receiveShadow = true;
       scene.add(ground);
 
-      // Background ambient particles (floating dots like the HTML)
       const BG_COUNT = 80;
       const bgGeo = new THREE.BufferGeometry();
       const bgPos = new Float32Array(BG_COUNT * 3);
@@ -690,18 +376,18 @@ export default function NoriTamagotchi() {
       }));
       scene.add(bgParticles);
 
-      // Ostrich
-      const mats  = makeMats();
-      const parts = buildOstrich(scene, mats);
+      // Build animal using current bodyColor and animalType
+      const mats  = makePetMats(bodyColor);
+      matsRef.current = mats;
+      const parts = buildAnimal(scene, mats, animalType);
+      partsRef.current = parts;
 
-      // Event particles group
       const partGroup = new THREE.Group();
       scene.add(partGroup);
       const eventParticles: EventParticle[] = [];
       spawnRef.current = (color, count, spread) =>
         spawnEventParticles(partGroup, eventParticles, color, count, spread);
 
-      // Orbit controls (drag to rotate, scroll to zoom) — same as HTML
       let isDragging = false;
       let prevMouse  = { x: 0, y: 0 };
       const spherical = { theta: 0, phi: Math.PI / 3, radius: 10 };
@@ -731,7 +417,6 @@ export default function NoriTamagotchi() {
       canvas.addEventListener('pointermove', onPointerMove);
       canvas.addEventListener('pointerup',   onPointerUp);
       canvas.addEventListener('wheel',       onWheel, { passive: true });
-      // Remove pointer-events: none from canvas so drag works
       canvas.style.pointerEvents = 'auto';
 
       function animate() {
@@ -739,13 +424,15 @@ export default function NoriTamagotchi() {
         const t       = performance.now() / 1000;
         const elapsed = t - animStartRef.current;
 
-        // Drive ostrich
-        animateOstrich(t, elapsed, petAnimRef.current, parts);
+        if (partsRef.current) {
+          animatePet(t, elapsed, petAnimRef.current, partsRef.current);
 
-        // Shadow responds to jump
-        const jumpY = parts.bird.position.y;
-        parts.shadow.scale.setScalar(Math.max(0.4, 1 - jumpY * 0.12));
-        (parts.shadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.06, 0.3 - jumpY * 0.06);
+          // Shadow responds to jump
+          const jumpY = partsRef.current.root.position.y;
+          const shadow = partsRef.current.shadow;
+          shadow.scale.setScalar(Math.max(0.4, 1 - jumpY * 0.12));
+          (shadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.06, 0.3 - jumpY * 0.06);
+        }
 
         // Float background particles
         const pos = bgGeo.attributes.position.array as Float32Array;
@@ -754,8 +441,6 @@ export default function NoriTamagotchi() {
           if (pos[i * 3 + 1] > 12) pos[i * 3 + 1] = 0;
         }
         bgGeo.attributes.position.needsUpdate = true;
-
-        // No auto-rotate — camera only moves on user drag/scroll
 
         // Event particles
         for (let i = eventParticles.length - 1; i >= 0; i--) {
@@ -796,7 +481,9 @@ export default function NoriTamagotchi() {
         cancelAnimationFrame(raf);
         renderer.dispose();
         scene.clear();
-        spawnRef.current = null;
+        spawnRef.current  = null;
+        matsRef.current   = null;
+        partsRef.current  = null;
       };
     };
 
@@ -808,7 +495,7 @@ export default function NoriTamagotchi() {
       ro.disconnect();
       threeCleanup?.();
     };
-  }, [isConnected, profile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isConnected, profile, animalType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isConnected || !profile) {
     return (
@@ -835,114 +522,169 @@ export default function NoriTamagotchi() {
   }
 
   return (
-    <div className="min-h-screen pt-20 pb-8">
-      <div className="max-w-3xl mx-auto px-4">
+    <>
+      {/* Pet Selector modal (in-app) */}
+      {selectorOpen && <PetSelector onClose={() => setSelectorOpen(false)} />}
 
-        {/* Stats + Mood */}
-        <div className="flex items-start justify-between mb-2 gap-4">
-          <div className="flex-1 space-y-2 pt-1">
-            <StatBar label={t.statHappiness} value={stats.happiness} color="#4ade80" />
-            <StatBar label={t.statEnergy}    value={stats.energy}    color="#38bdf8" />
-            <StatBar label={t.statSocial}    value={stats.social}    color="#a78bfa" />
-          </div>
-          <div className="flex flex-col items-center gap-1 shrink-0 pt-1">
-            <span className="text-3xl">{MOOD_META[mood].emoji}</span>
-            <span className="text-[11px] font-semibold" style={{ color: MOOD_META[mood].color }}>
-              {t.moods[mood]}
-            </span>
-            <span className="text-[9px] text-lc-muted/60 tabular-nums">{idleTime}</span>
-            <span className="text-[10px] font-bold text-lc-green tracking-wide">Lv.{level}</span>
-          </div>
-        </div>
+      <div className="min-h-screen pt-20 pb-8">
+        <div className="max-w-3xl mx-auto px-4">
 
-        {/* Pet canvas */}
-        <div
-          ref={containerRef}
-          className="relative w-full rounded-2xl overflow-hidden border border-lc-border/30"
-          style={{ height: 'min(55vh, 420px)', background: 'radial-gradient(ellipse at center, #1a1a2e 0%, #0d0d1a 100%)' }}
-        >
-          <canvas
-            ref={canvasRef}
-            className="absolute inset-0 w-full h-full"
-          />
-
-          {/* Drag hint */}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] text-lc-muted/40 pointer-events-none select-none" style={{ zIndex: 20 }}>
-            {t.dragHint}
+          {/* Stats + Mood */}
+          <div className="flex items-start justify-between mb-2 gap-4">
+            <div className="flex-1 space-y-2 pt-1">
+              <StatBar label={t.statHappiness} value={stats.happiness} color="#4ade80" />
+              <StatBar label={t.statEnergy}    value={stats.energy}    color="#38bdf8" />
+              <StatBar label={t.statSocial}    value={stats.social}    color="#a78bfa" />
+            </div>
+            <div className="flex flex-col items-center gap-1 shrink-0 pt-1">
+              <span className="text-3xl">{MOOD_META[mood].emoji}</span>
+              <span className="text-[11px] font-semibold" style={{ color: MOOD_META[mood].color }}>
+                {t.moods[mood]}
+              </span>
+              <span className="text-[9px] text-lc-muted/60 tabular-nums">{idleTime}</span>
+              <span className="text-[10px] font-bold text-lc-green tracking-wide">Lv.{level}</span>
+            </div>
           </div>
 
-          {/* Listening indicator */}
-          <div className="absolute top-3 right-3 flex items-center gap-1.5 pointer-events-none" style={{ zIndex: 20 }}>
-            <span className="inline-block w-2 h-2 rounded-full" style={{
-              background: isListening ? '#b4f953' : '#404040',
-              boxShadow: isListening ? '0 0 6px #b4f953aa' : 'none',
-              animation: isListening ? 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' : 'none',
-            }} />
-            <span className="text-[10px] font-medium" style={{ color: isListening ? '#b4f953' : '#555' }}>
-              {isListening ? t.connected : t.disconnected}
-            </span>
-          </div>
-
-          {/* Speech bubble */}
+          {/* Pet canvas */}
           <div
-            className="absolute bottom-10 left-1/2 -translate-x-1/2 px-4 py-2 rounded-2xl text-sm font-medium text-lc-white border border-lc-border/50 pointer-events-none whitespace-nowrap transition-opacity duration-300"
-            style={{ background: 'rgba(10,10,10,0.85)', opacity: speechVisible ? 1 : 0, zIndex: 20 }}
+            ref={containerRef}
+            className="relative w-full rounded-2xl overflow-hidden border border-lc-border/30"
+            style={{ height: 'min(55vh, 420px)', background: 'radial-gradient(ellipse at center, #1a1a2e 0%, #0d0d1a 100%)' }}
           >
-            {speechText}
-          </div>
+            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-          {/* Vignette */}
-          <div className="absolute inset-0 pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse at center,transparent 55%,rgba(10,10,10,0.5) 100%)', zIndex: 15 }} />
-        </div>
+            {/* Drag hint */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] text-lc-muted/40 pointer-events-none select-none" style={{ zIndex: 20 }}>
+              {t.dragHint}
+            </div>
 
-        {/* Event chips */}
-        <div className="mt-4 grid grid-cols-4 sm:grid-cols-7 gap-2">
-          {ACTION_BUTTONS.map(({ action, emoji }) => {
-            const label = t.actions[action];
-            const active = lastAction === action;
-            return (
-              <div key={label} className="lc-card p-3 flex flex-col items-center gap-1.5 text-center select-none transition-all duration-300"
-                style={{
-                  opacity: active ? 1 : 0.45,
-                  boxShadow: active ? '0 0 14px rgba(180,249,83,0.35)' : 'none',
-                  borderColor: active ? '#b4f953' : undefined,
-                  transform: active ? 'scale(1.08)' : 'scale(1)',
-                }}>
-                <span className="text-lg">{emoji}</span>
-                <span className="text-[10px] leading-tight font-medium text-lc-muted">{label}</span>
-              </div>
-            );
-          })}
-        </div>
+            {/* Listening indicator */}
+            <div className="absolute top-3 right-3 flex items-center gap-1.5 pointer-events-none" style={{ zIndex: 20 }}>
+              <span className="inline-block w-2 h-2 rounded-full" style={{
+                background: isListening ? '#b4f953' : '#404040',
+                boxShadow: isListening ? '0 0 6px #b4f953aa' : 'none',
+                animation: isListening ? 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' : 'none',
+              }} />
+              <span className="text-[10px] font-medium" style={{ color: isListening ? '#b4f953' : '#555' }}>
+                {isListening ? t.connected : t.disconnected}
+              </span>
+            </div>
 
-        {/* Activity log */}
-        <div className="mt-6">
-          <h3 className="text-[10px] font-bold text-lc-muted/60 uppercase tracking-[0.15em] mb-3">
-            {t.activityTitle}
-          </h3>
-          <div className="space-y-0">
-            {activityLog.length === 0 ? (
-              <p className="text-sm text-lc-muted/50 py-4 text-center">{t.activityEmpty}</p>
-            ) : (
-              activityLog.slice(0, 8).map((entry) => (
-                <div key={entry.id} className="flex items-center gap-2 py-2 border-b border-lc-border/20 last:border-0">
-                  <span className="text-xs text-lc-muted/50 font-mono tabular-nums w-10 shrink-0">{formatTime(entry.timestamp)}</span>
-                  {entry.senderPubkey ? (
-                    <SenderDisplay pubkey={entry.senderPubkey} profile={senderProfiles[entry.senderPubkey]} />
-                  ) : (
-                    <span className="text-sm shrink-0">{entry.emoji}</span>
-                  )}
-                  <span className="text-xs text-lc-muted truncate">
-                    {t.actions[entry.action]}{entry.detail ? ` · ${entry.detail}` : ''}
-                  </span>
+            {/* Current animal chip (top-left) */}
+            <div className="absolute top-3 left-3 flex items-center gap-1 px-2 py-1 rounded-full border border-lc-border/40 pointer-events-none" style={{ background: 'rgba(10,10,10,0.7)', zIndex: 20 }}>
+              <span className="text-sm">{ANIMAL_META[animalType].emoji}</span>
+              <span className="text-[10px] font-semibold text-lc-muted/80">
+                {lang === 'es' ? ANIMAL_META[animalType].nameEs : ANIMAL_META[animalType].nameEn}
+              </span>
+            </div>
+
+            {/* Speech bubble */}
+            <div
+              className="absolute bottom-10 left-1/2 -translate-x-1/2 px-4 py-2 rounded-2xl text-sm font-medium text-lc-white border border-lc-border/50 pointer-events-none whitespace-nowrap transition-opacity duration-300"
+              style={{ background: 'rgba(10,10,10,0.85)', opacity: speechVisible ? 1 : 0, zIndex: 20 }}
+            >
+              {speechText}
+            </div>
+
+            {/* Customization buttons (bottom-left) */}
+            <div className="absolute bottom-3 left-3 flex items-end gap-2" style={{ zIndex: 20 }}>
+              {/* Animal selector */}
+              <button
+                onClick={() => { setSelectorOpen(true); setPaletteOpen(false); }}
+                className="w-7 h-7 rounded-full border border-lc-border/60 flex items-center justify-center text-sm transition-transform duration-150 hover:scale-110 active:scale-95"
+                style={{ background: 'rgba(10,10,10,0.8)' }}
+                title={lang === 'es' ? 'Cambiar mascota' : 'Change pet'}
+              >
+                🐾
+              </button>
+
+              {/* Color picker */}
+              <button
+                onClick={() => setPaletteOpen(o => !o)}
+                className="w-7 h-7 rounded-full border border-lc-border/60 flex items-center justify-center text-sm transition-transform duration-150 hover:scale-110 active:scale-95"
+                style={{ background: 'rgba(10,10,10,0.8)', boxShadow: paletteOpen ? '0 0 0 2px #b4f95344' : 'none' }}
+                title={lang === 'es' ? 'Cambiar color' : 'Change color'}
+              >
+                🎨
+              </button>
+
+              {paletteOpen && (
+                <div
+                  className="flex gap-1.5 items-center px-2.5 py-2 rounded-full border border-lc-border/50"
+                  style={{ background: 'rgba(10,10,10,0.88)' }}
+                >
+                  {PALETTE.map(({ hex, nameEs, nameEn }) => (
+                    <button
+                      key={hex}
+                      onClick={() => setBodyColor(hex)}
+                      className="rounded-full transition-all duration-150 hover:scale-125"
+                      style={{
+                        width: bodyColor === hex ? 22 : 18,
+                        height: bodyColor === hex ? 22 : 18,
+                        background: hex,
+                        boxShadow: bodyColor === hex ? `0 0 0 2px #0a0a0a, 0 0 0 4px ${hex}` : 'none',
+                      }}
+                      title={lang === 'es' ? nameEs : nameEn}
+                    />
+                  ))}
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+              )}
+            </div>
 
+            {/* Vignette */}
+            <div className="absolute inset-0 pointer-events-none"
+              style={{ background: 'radial-gradient(ellipse at center,transparent 55%,rgba(10,10,10,0.5) 100%)', zIndex: 15 }} />
+          </div>
+
+          {/* Event chips */}
+          <div className="mt-4 grid grid-cols-4 sm:grid-cols-7 gap-2">
+            {ACTION_BUTTONS.map(({ action, emoji }) => {
+              const label = t.actions[action];
+              const active = lastAction === action;
+              return (
+                <div key={label} className="lc-card p-3 flex flex-col items-center gap-1.5 text-center select-none transition-all duration-300"
+                  style={{
+                    opacity: active ? 1 : 0.45,
+                    boxShadow: active ? '0 0 14px rgba(180,249,83,0.35)' : 'none',
+                    borderColor: active ? '#b4f953' : undefined,
+                    transform: active ? 'scale(1.08)' : 'scale(1)',
+                  }}>
+                  <span className="text-lg">{emoji}</span>
+                  <span className="text-[10px] leading-tight font-medium text-lc-muted">{label}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Activity log */}
+          <div className="mt-6">
+            <h3 className="text-[10px] font-bold text-lc-muted/60 uppercase tracking-[0.15em] mb-3">
+              {t.activityTitle}
+            </h3>
+            <div className="space-y-0">
+              {activityLog.length === 0 ? (
+                <p className="text-sm text-lc-muted/50 py-4 text-center">{t.activityEmpty}</p>
+              ) : (
+                activityLog.slice(0, 8).map((entry) => (
+                  <div key={entry.id} className="flex items-center gap-2 py-2 border-b border-lc-border/20 last:border-0">
+                    <span className="text-xs text-lc-muted/50 font-mono tabular-nums w-10 shrink-0">{formatTime(entry.timestamp)}</span>
+                    {entry.senderPubkey ? (
+                      <SenderDisplay pubkey={entry.senderPubkey} profile={senderProfiles[entry.senderPubkey]} />
+                    ) : (
+                      <span className="text-sm shrink-0">{entry.emoji}</span>
+                    )}
+                    <span className="text-xs text-lc-muted truncate">
+                      {t.actions[entry.action]}{entry.detail ? ` · ${entry.detail}` : ''}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+        </div>
       </div>
-    </div>
+    </>
   );
 }
