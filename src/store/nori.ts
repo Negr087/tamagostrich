@@ -161,7 +161,7 @@ export const useNoriStore = create<NoriState>()(
           mood: computeMoodFromStats(newStats, now),
         });
         scheduleSync();
-        useGoalsStore.getState().recordAction(action);
+        useGoalsStore.getState().recordAction(action, detail);
       },
 
       decayStats: () => {
