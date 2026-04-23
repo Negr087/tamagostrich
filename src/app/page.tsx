@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
 import NoriTamagotchi from '@/components/Nori';
-import PetSelector from '@/components/PetSelector';
+import EggHatch from '@/components/EggHatch';
 import { useAuthStore } from '@/store/auth';
 import { useNavStore, Section } from '@/store/nav';
 import { useAppearanceStore } from '@/store/appearance';
@@ -32,9 +32,9 @@ export default function Home() {
     return () => window.removeEventListener('hashchange', syncFromHash);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Show pet selection screen on first visit (after login)
+  // Show egg hatch screen on first visit (after login)
   if (isConnected && !hasChosen) {
-    return <PetSelector />;
+    return <EggHatch />;
   }
 
   return (

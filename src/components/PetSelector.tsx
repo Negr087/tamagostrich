@@ -8,10 +8,11 @@ import { useLang } from '@/lib/i18n';
 const ANIMALS = Object.entries(ANIMAL_META) as [AnimalType, typeof ANIMAL_META[AnimalType]][];
 
 interface PetSelectorProps {
-  onClose?: () => void; // undefined = first-time screen (no close button)
+  onClose?:   () => void; // undefined = first-time screen (no close button)
+  onConfirm?: () => void; // called after user confirms (from EggHatch flow)
 }
 
-export default function PetSelector({ onClose }: PetSelectorProps) {
+export default function PetSelector({ onClose, onConfirm }: PetSelectorProps) {
   const { bodyColor, animalType, setBodyColor, setAnimalType, setHasChosen } = useAppearanceStore();
   const { lang } = useLang();
 
@@ -24,6 +25,7 @@ export default function PetSelector({ onClose }: PetSelectorProps) {
     setAnimalType(selectedAnimal);
     setBodyColor(selectedColor);
     if (isFirstTime) setHasChosen(true);
+    onConfirm?.();
     onClose?.();
   }
 
