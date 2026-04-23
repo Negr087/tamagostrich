@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { useNoriStore, NoriAction, NoriMood } from '@/store/nori';
 import { useGoalsStore, ACHIEVEMENTS } from '@/store/goals';
 import { useAppearanceStore, PALETTE } from '@/store/appearance';
-import { buildAnimal, animatePet, makePetMats, PetParts, PetMats, PetAnim, ANIMAL_META } from '@/lib/petModels';
+import { buildAnimal, animatePet, makePetMats, preloadGLBs, PetParts, PetMats, PetAnim, ANIMAL_META } from '@/lib/petModels';
 import { startNoriListener, stopNoriListener } from '@/lib/noriEvents';
 import { getNDK } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
@@ -190,6 +190,9 @@ export default function NoriTamagotchi() {
   const [selectorOpen, setSelectorOpen]     = useState(false);
   const idleTime = useIdleTime(lastEventTime);
   const fetchingSet = useRef<Set<string>>(new Set());
+
+  // Kick off all GLB downloads in parallel as soon as component mounts
+  useEffect(() => { preloadGLBs(); }, []);
 
   // Sync React state → refs used inside rAF
   useEffect(() => {

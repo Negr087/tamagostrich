@@ -78,42 +78,64 @@ function mkEye(m: PetMats, sz = 0.22): THREE.Group {
   return g;
 }
 
-// ─── GLTF LOADER (generic) ───────────────────────────────────────────
+// ─── GLTF CACHE + LOADER ─────────────────────────────────────────────
+
+interface CachedGLTF {
+  scene: THREE.Group;
+  scale: number;
+  ox: number; oy: number; oz: number;
+}
+
+// Stores the in-flight or resolved promise per path — prevents double-loading
+const glbPromises = new Map<string, Promise<CachedGLTF>>();
+
+function fetchGLTF(path: string): Promise<CachedGLTF> {
+  if (!glbPromises.has(path)) {
+    glbPromises.set(path, (async () => {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const loader = new GLTFLoader();
+      const gltf = await new Promise<{ scene: THREE.Group }>((resolve, reject) => {
+        loader.load(path, resolve as never, undefined, reject);
+      });
+      const model  = gltf.scene;
+      const box    = new THREE.Box3().setFromObject(model);
+      const size   = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const scale  = 3.8 / Math.max(size.x, size.y, size.z);
+      return { scene: model, scale, ox: -center.x * scale, oy: -box.min.y * scale + 0.05, oz: -center.z * scale };
+    })());
+  }
+  return glbPromises.get(path)!;
+}
+
 async function loadGLTF(scene: THREE.Scene, m: PetMats, path: string): Promise<PetParts> {
-  const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
-  const loader = new GLTFLoader();
-  return new Promise((resolve, reject) => {
-    loader.load(
-      path,
-      (gltf) => {
-        const root = new THREE.Group();
-        const model = gltf.scene;
-
-        const box    = new THREE.Box3().setFromObject(model);
-        const size   = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        const scale  = 3.8 / Math.max(size.x, size.y, size.z);
-        model.scale.setScalar(scale);
-        model.position.x = -center.x * scale;
-        model.position.z = -center.z * scale;
-        model.position.y = -box.min.y * scale + 0.05;
-
-        model.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            child.castShadow    = true;
-            child.receiveShadow = true;
-            child.material      = m.body;
-          }
-        });
-
-        root.add(model);
-        scene.add(root);
-        resolve({ root, shadow: mkShadow(scene) });
-      },
-      undefined,
-      (err) => reject(err),
-    );
+  const c     = await fetchGLTF(path);
+  const root  = new THREE.Group();
+  const model = c.scene.clone(); // clone so we don't mutate the cached original
+  model.scale.setScalar(c.scale);
+  model.position.set(c.ox, c.oy, c.oz);
+  model.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.castShadow = child.receiveShadow = true;
+      child.material   = m.body;
+    }
   });
+  root.add(model);
+  scene.add(root);
+  return { root, shadow: mkShadow(scene) };
+}
+
+// Call once on app mount — kicks off all GLB downloads in parallel
+export const GLB_PATHS: Partial<Record<AnimalType, string>> = {
+  avestruz: '/ostrich.glb',
+  llama:    '/llama.glb',
+  toro:     '/toro.glb',
+  gorila:   '/gorila.glb',
+  tigre:    '/tigre.glb',
+};
+
+export function preloadGLBs(): void {
+  for (const path of Object.values(GLB_PATHS)) fetchGLTF(path);
 }
 
 
