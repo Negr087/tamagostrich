@@ -78,293 +78,31 @@ function mkEye(m: PetMats, sz = 0.22): THREE.Group {
   return g;
 }
 
-// ─── AVESTRUZ ────────────────────────────────────────────────────────
-function buildAvestruz(scene: THREE.Scene, m: PetMats): PetParts {
-  const root = new THREE.Group();
-
-  const bodyGeo = new THREE.SphereGeometry(1.3, 32, 32);
-  bodyGeo.scale(1, 0.85, 0.9);
-  const body = new THREE.Mesh(bodyGeo, m.body);
-  body.position.set(0, 1.8, 0); body.castShadow = true; root.add(body);
-
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const g = new THREE.Group();
-    for (let j = 0; j < 5; j++) {
-      const geo = new THREE.SphereGeometry(0.18 * 1.2, 12, 12);
-      geo.scale(1, 1.3, 0.8);
-      const mesh = new THREE.Mesh(geo, m.dark);
-      const b = (j / 5) * Math.PI * 0.8 - Math.PI * 0.4;
-      mesh.position.set(Math.sin(b) * 0.18, Math.cos(b) * 0.18, 0);
-      mesh.rotation.z = b * 0.5; g.add(mesh);
-    }
-    g.position.set(Math.sin(a) * 1.1, 1.4, Math.cos(a) * 0.8); root.add(g);
-  }
-
-  for (let i = 0; i < 6; i++) {
-    const t = i / 6;
-    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.35 - t * 0.08, 16, 16), m.body);
-    seg.position.set(0, 2.5 + t * 1.5, -0.1 + t * 0.2); root.add(seg);
-  }
-
-  const headGeo = new THREE.SphereGeometry(0.6, 32, 32);
-  headGeo.scale(1, 0.9, 0.95);
-  const head = new THREE.Mesh(headGeo, m.body);
-  head.position.set(0, 4.3, 0.15); head.castShadow = true; root.add(head);
-
-  const hairGroup = new THREE.Group();
-  for (let i = 0; i < 7; i++) {
-    const geo = new THREE.SphereGeometry(0.08, 8, 8);
-    geo.scale(0.6, 2.2, 0.6);
-    const hair = new THREE.Mesh(geo, m.dark);
-    const a = (i / 7) * Math.PI - Math.PI * 0.5;
-    hair.position.set(Math.sin(a) * 0.25, 4.85, 0.15 + Math.cos(a) * 0.1);
-    hair.rotation.z = a * 0.4; hair.rotation.x = -0.2; hairGroup.add(hair);
-  }
-  root.add(hairGroup);
-
-  const eyeL = mkEye(m); eyeL.position.set( 0.35, 4.4, 0.4); eyeL.rotation.y = -0.25; root.add(eyeL);
-  const eyeR = mkEye(m); eyeR.position.set(-0.35, 4.4, 0.4); eyeR.rotation.y =  0.25; root.add(eyeR);
-
-  const jawGroup = new THREE.Group();
-  const ubk = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), m.beak);
-  ubk.scale.set(1.2, 0.5, 1.8); ubk.position.set(0, 4.15, 0.7); jawGroup.add(ubk);
-  const lbk = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), m.beak);
-  lbk.scale.set(1, 0.35, 1.5); lbk.position.set(0, 4.0, 0.65); jawGroup.add(lbk);
-  root.add(jawGroup);
-
-  for (const side of [-1, 1] as const) {
-    for (let i = 0; i < 6; i++) {
-      const f = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), m.dark);
-      f.scale.set(0.7, 1.2, 0.6);
-      const a = (i / 6) * Math.PI * 0.5;
-      f.position.set(side * (1.2 + Math.sin(a) * 0.2), 2.0 - i * 0.15, -0.1);
-      f.rotation.z = side * (0.3 + i * 0.08); root.add(f);
-    }
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 0.6 - Math.PI * 0.3;
-      const f = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), m.dark);
-      f.scale.set(0.6, 1.3, 0.8);
-      f.position.set(Math.sin(a) * 0.3, 1.5 + Math.cos(a) * 0.15, -0.9);
-      f.rotation.x = 0.4; f.rotation.z = a * 0.3; root.add(f);
-    }
-  }
-
-  function mkLeg(side: number): THREE.Group {
-    const g = new THREE.Group();
-    const up = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 1.0, 12), m.leg);
-    up.position.set(side * 0.4, 0.7, 0); up.rotation.z = side * 0.15; g.add(up);
-    const lo = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.8, 12), m.leg);
-    lo.position.set(side * 0.5, 0.15, 0.05); g.add(lo);
-    for (let t = -1; t <= 1; t++) {
-      const toe = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), m.leg);
-      toe.scale.set(0.8, 0.4, 2.0);
-      toe.position.set(side * 0.5 + t * 0.08, -0.15, 0.15 + Math.abs(t) * -0.05); g.add(toe);
-    }
-    return g;
-  }
-  const legL = mkLeg(-1); const legR = mkLeg(1);
-  root.add(legL); root.add(legR);
-
-  scene.add(root);
-  return { root, shadow: mkShadow(scene), head, hairGroup, jawGroup, legL, legR };
-}
-
-// ─── LLAMA ───────────────────────────────────────────────────────────
-function buildLlama(scene: THREE.Scene, m: PetMats): PetParts {
-  const root = new THREE.Group();
-
-  // Woolly body
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.25, 32, 32), m.body);
-  body.scale.set(1.0, 0.9, 0.95); body.position.set(0, 1.8, 0); root.add(body);
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    const w = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), m.body);
-    w.position.set(Math.sin(a) * 1.1, 1.5 + Math.cos(a * 1.3) * 0.45, Math.cos(a) * 0.8);
-    w.scale.setScalar(0.85 + (i % 3) * 0.08); root.add(w);
-  }
-
-  // Neck (slightly forward-leaning)
-  for (let i = 0; i < 5; i++) {
-    const t = i / 4;
-    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.28 - t * 0.05, 16, 16), m.body);
-    seg.position.set(-t * 0.15, 2.6 + t * 1.25, t * 0.15); root.add(seg);
-  }
-
-  // Head (long face)
-  const headGeo = new THREE.SphereGeometry(0.52, 32, 32);
-  headGeo.scale(0.82, 1.05, 1.1);
-  const head = new THREE.Mesh(headGeo, m.body);
-  head.position.set(-0.2, 4.2, 0.2); root.add(head);
-
-  // Muzzle
-  const muz = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 16), m.body);
-  muz.scale.set(0.8, 0.65, 1.05); muz.position.set(-0.2, 3.97, 0.6); root.add(muz);
-
-  // Nostrils
-  for (const s of [-0.07, 0.07] as const) {
-    const n = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), m.dark);
-    n.scale.set(0.8, 0.5, 0.5); n.position.set(-0.2 + s, 3.93, 0.82); root.add(n);
-  }
-
-  // Ears
-  for (const side of [-1, 1] as const) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 12), m.dark);
-    ear.scale.set(0.65, 1.6, 0.5); ear.position.set(side * 0.3 - 0.1, 4.72, 0.1);
-    ear.rotation.z = side * 0.18; root.add(ear);
-    const inner = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), m.tongue);
-    inner.scale.set(0.5, 1.1, 0.3); inner.position.set(side * 0.3 - 0.1, 4.72, 0.14);
-    inner.rotation.z = side * 0.18; root.add(inner);
-  }
-
-  // Eyes
-  const eyeL = mkEye(m, 0.19); eyeL.position.set(-0.0, 4.28, 0.48); root.add(eyeL);
-  const eyeR = mkEye(m, 0.19); eyeR.position.set(-0.38, 4.28, 0.48); root.add(eyeR);
-
-  // Neck fluff (swaying)
-  const hairGroup = new THREE.Group();
-  for (let i = 0; i < 5; i++) {
-    const h = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), m.body);
-    h.position.set((i - 2) * 0.13, 3.1 + i * 0.18, -0.05); hairGroup.add(h);
-  }
-  root.add(hairGroup);
-
-  // 4 legs
-  function mkLlamaLeg(sx: number, sz: number): THREE.Group {
-    const g = new THREE.Group();
-    const up = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.85, 12), m.body);
-    up.position.y = -0.43; g.add(up);
-    const lo = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.75, 12), m.dark);
-    lo.position.y = -0.93; g.add(lo);
-    const hf = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), m.dark);
-    hf.scale.set(1.1, 0.5, 1.2); hf.position.y = -1.35; g.add(hf);
-    g.position.set(sx, 1.25, sz); return g;
-  }
-  const legL = mkLlamaLeg(-0.43, -0.18); const legR = mkLlamaLeg(0.43, -0.18);
-  root.add(legL); root.add(legR);
-  root.add(mkLlamaLeg(-0.41, 0.42)); root.add(mkLlamaLeg(0.41, 0.42));
-
-  // Short tail
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), m.dark);
-  tail.scale.set(0.7, 0.9, 0.55); tail.position.set(0, 1.95, -1.15); root.add(tail);
-
-  scene.add(root);
-  return { root, shadow: mkShadow(scene), head, hairGroup, legL, legR };
-}
-
-// ─── TORO ────────────────────────────────────────────────────────────
-function buildToro(scene: THREE.Scene, m: PetMats): PetParts {
-  const root = new THREE.Group();
-
-  // Stocky body
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.45, 32, 32), m.body);
-  body.scale.set(1.1, 0.92, 1.05); body.position.set(0, 1.7, 0); root.add(body);
-
-  // Short thick neck
-  for (let i = 0; i < 3; i++) {
-    const t = i / 2;
-    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.55 - t * 0.1, 16, 16), m.body);
-    seg.position.set(0, 2.65 + t * 0.55, t * 0.2); root.add(seg);
-  }
-
-  // Head (wide, low)
-  const headGeo = new THREE.SphereGeometry(0.68, 32, 32);
-  headGeo.scale(1.0, 0.88, 1.05);
-  const head = new THREE.Mesh(headGeo, m.body);
-  head.position.set(0, 3.42, 0.45); root.add(head);
-
-  // Broad snout
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 16), m.body);
-  snout.scale.set(1.0, 0.7, 1.05); snout.position.set(0, 3.22, 0.85); root.add(snout);
-  for (const s of [-0.1, 0.1] as const) {
-    const n = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), m.dark);
-    n.scale.set(1, 0.5, 0.6); n.position.set(s, 3.19, 1.0); root.add(n);
-  }
-
-  // Horns
-  for (const side of [-1, 1] as const) {
-    const hGeo = new THREE.CylinderGeometry(0.05, 0.03, 0.6, 10);
-    const horn = new THREE.Mesh(hGeo, m.beak);
-    horn.position.set(side * 0.52, 3.8, 0.3);
-    horn.rotation.set(0.25, 0, side * 0.55);
-    root.add(horn);
-    // Tip curve suggestion with small sphere
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), m.beak);
-    tip.position.set(side * 0.77, 3.9, 0.17); root.add(tip);
-  }
-
-  // Angry brow
-  for (const side of [-1, 1] as const) {
-    const brow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), m.dark);
-    brow.scale.set(1.5, 0.4, 0.6);
-    brow.position.set(side * 0.28, 3.65, 0.68); brow.rotation.z = side * 0.3; root.add(brow);
-  }
-
-  // Eyes
-  const eyeL = mkEye(m, 0.18); eyeL.position.set( 0.35, 3.48, 0.72); root.add(eyeL);
-  const eyeR = mkEye(m, 0.18); eyeR.position.set(-0.35, 3.48, 0.72); root.add(eyeR);
-
-  // Nose ring
-  const ringGeo = new THREE.TorusGeometry(0.1, 0.025, 8, 16);
-  const ring = new THREE.Mesh(ringGeo, m.beak);
-  ring.rotation.x = Math.PI / 2; ring.position.set(0, 3.12, 1.0); root.add(ring);
-
-  // 4 thick legs
-  function mkToroLeg(sx: number, sz: number): THREE.Group {
-    const g = new THREE.Group();
-    const up = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.85, 12), m.body);
-    up.position.y = -0.43; g.add(up);
-    const lo = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.75, 12), m.dark);
-    lo.position.y = -0.93; g.add(lo);
-    const hf = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), m.dark);
-    hf.scale.set(1.1, 0.5, 1.15); hf.position.y = -1.35; g.add(hf);
-    g.position.set(sx, 1.3, sz); return g;
-  }
-  const legL = mkToroLeg(-0.52, -0.25); const legR = mkToroLeg(0.52, -0.25);
-  root.add(legL); root.add(legR);
-  root.add(mkToroLeg(-0.50, 0.45)); root.add(mkToroLeg(0.50, 0.45));
-
-  // Tail
-  const tailStem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.03, 0.7, 8), m.dark);
-  tailStem.position.set(0, 2.1, -1.35); tailStem.rotation.x = 0.5; root.add(tailStem);
-  const tailTuft = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), m.dark);
-  tailTuft.position.set(0, 1.8, -1.7); root.add(tailTuft);
-
-  // Hump
-  const hump = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), m.body);
-  hump.scale.set(0.7, 0.6, 0.8); hump.position.set(0, 2.7, -0.5); root.add(hump);
-
-  scene.add(root);
-  return { root, shadow: mkShadow(scene), head, legL, legR };
-}
-
-// ─── GORILA (GLTF model) ─────────────────────────────────────────────
-async function buildGorilaGLTF(scene: THREE.Scene, m: PetMats): Promise<PetParts> {
+// ─── GLTF LOADER (generic) ───────────────────────────────────────────
+async function loadGLTF(scene: THREE.Scene, m: PetMats, path: string): Promise<PetParts> {
   const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
     loader.load(
-      '/gorila.glb',
+      path,
       (gltf) => {
         const root = new THREE.Group();
         const model = gltf.scene;
 
-        // Auto-normalize to a consistent height
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
+        const box    = new THREE.Box3().setFromObject(model);
+        const size   = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
-        const scale = 3.8 / Math.max(size.x, size.y, size.z);
+        const scale  = 3.8 / Math.max(size.x, size.y, size.z);
         model.scale.setScalar(scale);
         model.position.x = -center.x * scale;
         model.position.z = -center.z * scale;
         model.position.y = -box.min.y * scale + 0.05;
 
-        // Share the body material so the color palette updates live
         model.traverse((child) => {
           if (child instanceof THREE.Mesh) {
-            child.castShadow = true;
+            child.castShadow    = true;
             child.receiveShadow = true;
-            child.material = m.body;
+            child.material      = m.body;
           }
         });
 
@@ -378,97 +116,7 @@ async function buildGorilaGLTF(scene: THREE.Scene, m: PetMats): Promise<PetParts
   });
 }
 
-// ─── TIGRE ───────────────────────────────────────────────────────────
-function buildTigre(scene: THREE.Scene, m: PetMats): PetParts {
-  const root = new THREE.Group();
 
-  // Low feline body
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.3, 32, 32), m.body);
-  body.scale.set(1.2, 0.82, 1.05); body.position.set(0, 1.6, 0); root.add(body);
-
-  // Stripes (dark boxes on body)
-  for (let i = 0; i < 5; i++) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8, 1.6), m.dark);
-    stripe.position.set((i - 2) * 0.3, 1.6, 0); root.add(stripe);
-  }
-
-  // Short thick neck
-  for (let i = 0; i < 3; i++) {
-    const t = i / 2;
-    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.42 - t * 0.06, 16, 16), m.body);
-    seg.position.set(0, 2.55 + t * 0.5, t * 0.22); root.add(seg);
-  }
-
-  // Round head
-  const headGeo = new THREE.SphereGeometry(0.62, 32, 32);
-  headGeo.scale(1.0, 0.92, 0.95);
-  const head = new THREE.Mesh(headGeo, m.body);
-  head.position.set(0, 3.3, 0.35); root.add(head);
-
-  // Stripe on face
-  for (const s of [-0.22, 0.0, 0.22] as const) {
-    const fs = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.08), m.dark);
-    fs.position.set(s, 3.4, 0.6); root.add(fs);
-  }
-
-  // Muzzle
-  const muz = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), m.body);
-  muz.scale.set(0.85, 0.65, 0.8); muz.position.set(0, 3.1, 0.72); root.add(muz);
-
-  // Triangular ears
-  for (const side of [-1, 1] as const) {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.28, 12), m.body);
-    ear.position.set(side * 0.44, 3.8, 0.22); ear.rotation.z = side * 0.15; root.add(ear);
-    const earInner = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 10), m.tongue);
-    earInner.position.set(side * 0.44, 3.8, 0.28); earInner.rotation.z = side * 0.15; root.add(earInner);
-  }
-
-  // Eyes
-  const eyeL = mkEye(m, 0.19); eyeL.position.set( 0.28, 3.42, 0.58); root.add(eyeL);
-  const eyeR = mkEye(m, 0.19); eyeR.position.set(-0.28, 3.42, 0.58); root.add(eyeR);
-
-  // Nose
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), m.tongue);
-  nose.scale.set(1.1, 0.6, 0.6); nose.position.set(0, 3.12, 0.82); root.add(nose);
-
-  // Whiskers
-  for (const side of [-1, 1] as const) {
-    for (let i = 0; i < 3; i++) {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.005, 0.55, 6), m.eyeWhite);
-      w.position.set(side * (0.28 + i * 0.04), 3.08 + i * 0.04, 0.7);
-      w.rotation.z = side * (Math.PI / 2 + i * 0.15); root.add(w);
-    }
-  }
-
-  // 4 legs (slightly crouched)
-  function mkTigreLeg(sx: number, sz: number, tilt: number): THREE.Group {
-    const g = new THREE.Group();
-    const up = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.8, 12), m.body);
-    up.position.y = -0.4; up.rotation.x = tilt; g.add(up);
-    const lo = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.75, 12), m.body);
-    lo.position.set(0, -0.88, tilt * 0.3); g.add(lo);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), m.dark);
-    paw.scale.set(1.1, 0.45, 1.3); paw.position.y = -1.28; g.add(paw);
-    g.position.set(sx, 1.2, sz); return g;
-  }
-  const legL = mkTigreLeg(-0.52, -0.3, -0.15); const legR = mkTigreLeg(0.52, -0.3, -0.15);
-  root.add(legL); root.add(legR);
-  root.add(mkTigreLeg(-0.50, 0.5, 0.12)); root.add(mkTigreLeg(0.50, 0.5, 0.12));
-
-  // Long tail with dark tip
-  const hairGroup = new THREE.Group();
-  const positions = [
-    [0, 1.8, -1.3], [0.3, 2.2, -1.7], [0.6, 2.6, -1.9], [0.7, 3.0, -1.8], [0.6, 3.3, -1.6]
-  ];
-  positions.forEach(([x, y, z], i) => {
-    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.12 - i * 0.01, 10, 10), i > 2 ? m.dark : m.body);
-    seg.position.set(x, y, z); hairGroup.add(seg);
-  });
-  root.add(hairGroup);
-
-  scene.add(root);
-  return { root, shadow: mkShadow(scene), head, hairGroup, legL, legR };
-}
 
 // ─── GATO ────────────────────────────────────────────────────────────
 function buildGato(scene: THREE.Scene, m: PetMats): PetParts {
@@ -721,11 +369,11 @@ function buildBuho(scene: THREE.Scene, m: PetMats): PetParts {
 // ─── DISPATCH ────────────────────────────────────────────────────────
 export async function buildAnimal(scene: THREE.Scene, mats: PetMats, type: AnimalType): Promise<PetParts> {
   switch (type) {
-    case 'avestruz': return buildAvestruz(scene, mats);
-    case 'llama':    return buildLlama(scene, mats);
-    case 'toro':     return buildToro(scene, mats);
-    case 'gorila':   return buildGorilaGLTF(scene, mats);
-    case 'tigre':    return buildTigre(scene, mats);
+    case 'avestruz': return loadGLTF(scene, mats, '/ostrich.glb');
+    case 'llama':    return loadGLTF(scene, mats, '/llama.glb');
+    case 'toro':     return loadGLTF(scene, mats, '/toro.glb');
+    case 'gorila':   return loadGLTF(scene, mats, '/gorila.glb');
+    case 'tigre':    return loadGLTF(scene, mats, '/tigre.glb');
     case 'gato':     return buildGato(scene, mats);
     case 'ardilla':  return buildArdilla(scene, mats);
     case 'buho':     return buildBuho(scene, mats);
