@@ -311,9 +311,10 @@ export default function NoriTamagotchi() {
 
     let raf: number;
     let initialized = false;
+    let alive = true;
     let threeCleanup: (() => void) | null = null;
 
-    const tryInit = () => {
+    const tryInit = async () => {
       if (initialized) return;
       const w = container.clientWidth;
       const h = container.clientHeight;
@@ -379,7 +380,8 @@ export default function NoriTamagotchi() {
       // Build animal using current bodyColor and animalType
       const mats  = makePetMats(bodyColor);
       matsRef.current = mats;
-      const parts = buildAnimal(scene, mats, animalType);
+      const parts = await buildAnimal(scene, mats, animalType);
+      if (!alive) { renderer.dispose(); scene.clear(); return; }
       partsRef.current = parts;
 
       const partGroup = new THREE.Group();
@@ -492,6 +494,7 @@ export default function NoriTamagotchi() {
     tryInit();
 
     return () => {
+      alive = false;
       ro.disconnect();
       threeCleanup?.();
     };

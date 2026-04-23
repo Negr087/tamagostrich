@@ -338,91 +338,44 @@ function buildToro(scene: THREE.Scene, m: PetMats): PetParts {
   return { root, shadow: mkShadow(scene), head, legL, legR };
 }
 
-// ─── GORILA ──────────────────────────────────────────────────────────
-function buildGorila(scene: THREE.Scene, m: PetMats): PetParts {
-  const root = new THREE.Group();
+// ─── GORILA (GLTF model) ─────────────────────────────────────────────
+async function buildGorilaGLTF(scene: THREE.Scene, m: PetMats): Promise<PetParts> {
+  const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+  const loader = new GLTFLoader();
+  return new Promise((resolve, reject) => {
+    loader.load(
+      '/gorila.glb',
+      (gltf) => {
+        const root = new THREE.Group();
+        const model = gltf.scene;
 
-  // Barrel body
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.4, 32, 32), m.body);
-  body.scale.set(1.1, 1.0, 0.95); body.position.set(0, 1.65, 0); root.add(body);
+        // Auto-normalize to a consistent height
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const scale = 3.8 / Math.max(size.x, size.y, size.z);
+        model.scale.setScalar(scale);
+        model.position.x = -center.x * scale;
+        model.position.z = -center.z * scale;
+        model.position.y = -box.min.y * scale + 0.05;
 
-  // Light chest patch
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.85, 20, 20), m.dark);
-  chest.scale.set(0.8, 0.7, 0.25); chest.position.set(0, 1.8, 1.12); root.add(chest);
+        // Share the body material so the color palette updates live
+        model.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            child.material = m.body;
+          }
+        });
 
-  // Short thick neck
-  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), m.body);
-  neck.scale.set(1.0, 0.7, 0.9); neck.position.set(0, 2.65, 0.1); root.add(neck);
-
-  // Round head with heavy brow
-  const headGeo = new THREE.SphereGeometry(0.72, 32, 32);
-  headGeo.scale(1.0, 0.92, 0.95);
-  const head = new THREE.Mesh(headGeo, m.body);
-  head.position.set(0, 3.38, 0.1); root.add(head);
-
-  // Sagittal crest (crown ridge)
-  const crest = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), m.dark);
-  crest.scale.set(0.4, 0.5, 0.9); crest.position.set(0, 3.95, 0.0); root.add(crest);
-
-  // Heavy brow ridge
-  const brow = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), m.dark);
-  brow.scale.set(0.95, 0.25, 0.4); brow.position.set(0, 3.65, 0.56); root.add(brow);
-
-  // Flat nose / face
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), m.body);
-  snout.scale.set(0.85, 0.65, 0.7); snout.position.set(0, 3.18, 0.6); root.add(snout);
-  for (const s of [-0.1, 0.1] as const) {
-    const n = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), m.dark);
-    n.scale.set(1, 0.5, 0.5); n.position.set(s, 3.2, 0.82); root.add(n);
-  }
-
-  // Eyes (under brow)
-  const eyeL = mkEye(m, 0.17); eyeL.position.set( 0.26, 3.52, 0.6); root.add(eyeL);
-  const eyeR = mkEye(m, 0.17); eyeR.position.set(-0.26, 3.52, 0.6); root.add(eyeR);
-
-  // Small ears
-  for (const side of [-1, 1] as const) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), m.body);
-    ear.scale.set(0.6, 0.7, 0.4); ear.position.set(side * 0.72, 3.38, 0.0); root.add(ear);
-  }
-
-  // Long arms (knuckle-walk pose)
-  function mkArm(side: number): THREE.Group {
-    const g = new THREE.Group();
-    // Upper arm
-    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.15, 1.1, 12), m.body);
-    upper.position.set(0, -0.55, 0); upper.rotation.z = side * -0.15; g.add(upper);
-    // Forearm
-    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 1.0, 12), m.body);
-    fore.position.set(side * 0.15, -1.2, 0.3); fore.rotation.set(0.3, 0, side * 0.1); g.add(fore);
-    // Big hand
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), m.dark);
-    hand.scale.set(1.1, 0.6, 1.2); hand.position.set(side * 0.28, -1.8, 0.7); g.add(hand);
-    // Knuckles
-    for (let f = 0; f < 4; f++) {
-      const knk = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), m.dark);
-      knk.position.set(side * 0.28 + (f - 1.5) * 0.07, -1.78, 0.9); g.add(knk);
-    }
-    g.position.set(side * 1.3, 2.6, 0.1); return g;
-  }
-  root.add(mkArm(-1)); root.add(mkArm(1));
-
-  // Short legs
-  function mkGorillaLeg(sx: number): THREE.Group {
-    const g = new THREE.Group();
-    const up = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.14, 0.8, 12), m.body);
-    up.position.y = -0.4; g.add(up);
-    const lo = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.7, 12), m.dark);
-    lo.position.y = -0.88; g.add(lo);
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), m.dark);
-    foot.scale.set(1.0, 0.45, 1.4); foot.position.set(0, -1.28, 0.1); g.add(foot);
-    g.position.set(sx, 1.1, 0.2); return g;
-  }
-  const legL = mkGorillaLeg(-0.48); const legR = mkGorillaLeg(0.48);
-  root.add(legL); root.add(legR);
-
-  scene.add(root);
-  return { root, shadow: mkShadow(scene), head, legL, legR };
+        root.add(model);
+        scene.add(root);
+        resolve({ root, shadow: mkShadow(scene) });
+      },
+      undefined,
+      (err) => reject(err),
+    );
+  });
 }
 
 // ─── TIGRE ───────────────────────────────────────────────────────────
@@ -766,12 +719,12 @@ function buildBuho(scene: THREE.Scene, m: PetMats): PetParts {
 }
 
 // ─── DISPATCH ────────────────────────────────────────────────────────
-export function buildAnimal(scene: THREE.Scene, mats: PetMats, type: AnimalType): PetParts {
+export async function buildAnimal(scene: THREE.Scene, mats: PetMats, type: AnimalType): Promise<PetParts> {
   switch (type) {
     case 'avestruz': return buildAvestruz(scene, mats);
     case 'llama':    return buildLlama(scene, mats);
     case 'toro':     return buildToro(scene, mats);
-    case 'gorila':   return buildGorila(scene, mats);
+    case 'gorila':   return buildGorilaGLTF(scene, mats);
     case 'tigre':    return buildTigre(scene, mats);
     case 'gato':     return buildGato(scene, mats);
     case 'ardilla':  return buildArdilla(scene, mats);
