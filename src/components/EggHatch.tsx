@@ -32,7 +32,11 @@ export default function EggHatch() {
   function handleEggClick() {
     if (phase !== 'idle') return;
     setPhase('cracking');
-    setTimeout(() => setPhase('hatched'), 1900);
+    // Switch to hatched only when BOTH the animation AND the GLB are ready
+    Promise.all([
+      new Promise<void>(r => setTimeout(r, 1900)),
+      fetchGLTF('/mascota.glb').then(() => {}).catch(() => {}),
+    ]).then(() => setPhase('hatched'));
   }
 
   function handleStart() {

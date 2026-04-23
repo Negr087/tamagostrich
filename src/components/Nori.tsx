@@ -395,7 +395,7 @@ export default function NoriTamagotchi() {
 
       let isDragging = false;
       let prevMouse  = { x: 0, y: 0 };
-      const spherical = { theta: 0, phi: Math.PI / 3, radius: 10 };
+      const spherical = { theta: 0, phi: Math.PI / 2, radius: 10 };
 
       function updateCamera() {
         camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
