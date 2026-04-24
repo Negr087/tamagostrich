@@ -52,33 +52,43 @@ function clamp(val: number, min = 0, max = 100) {
 
 // Debounced publish — fires 10s after the last stats change
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function doPublish() {
+  const state = useNoriStore.getState();
+  if (state.isSyncingFromNostr) return;
+  const { publishPetState } = await import('@/lib/nostr');
+  const goals = useGoalsStore.getState();
+  await publishPetState({
+    version: 1,
+    stats: state.stats,
+    lastEventTime: state.lastEventTime,
+    lastDecayTime: state.lastDecayTime,
+    activityLog: state.activityLog.slice(0, 20),
+    goals: {
+      xp: goals.xp,
+      level: goals.level,
+      unlockedAchievements: goals.unlockedAchievements,
+      actionCounts: goals.actionCounts,
+      lastActiveDay: goals.lastActiveDay,
+      streakDays: goals.streakDays,
+    },
+  });
+}
+
 function scheduleSync() {
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(async () => {
-    const state = useNoriStore.getState();
-    if (state.isSyncingFromNostr) return; // don't publish while loading
-    try {
-      const { publishPetState } = await import('@/lib/nostr');
-      const goals = useGoalsStore.getState();
-      await publishPetState({
-        version: 1,
-        stats: state.stats,
-        lastEventTime: state.lastEventTime,
-        lastDecayTime: state.lastDecayTime,
-        activityLog: state.activityLog.slice(0, 20),
-        goals: {
-          xp: goals.xp,
-          level: goals.level,
-          unlockedAchievements: goals.unlockedAchievements,
-          actionCounts: goals.actionCounts,
-          lastActiveDay: goals.lastActiveDay,
-          streakDays: goals.streakDays,
-        },
-      });
-    } catch (e) {
-      console.warn('[pet-sync] sync failed:', e);
-    }
+  syncTimer = setTimeout(() => {
+    doPublish().catch(e => console.warn('[pet-sync] sync failed:', e));
   }, 10000);
+}
+
+// Flush any pending sync immediately — call before logout so progress isn't lost
+export function flushSync() {
+  if (syncTimer) {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+  doPublish().catch(() => {});
 }
 
 const ACTION_EFFECTS: Record<NoriAction, { happiness: number; energy: number; social: number }> = {

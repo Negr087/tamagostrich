@@ -6,6 +6,7 @@ import type { Nip46Session } from '@/lib/nostr';
 import { useProfileCache } from './profileCache';
 import { useBadgesCache } from './badgesCache';
 import { useGoalsStore } from './goals';
+import { flushSync } from './nori';
 
 interface AuthState {
   isConnected: boolean;
@@ -69,11 +70,16 @@ export const useAuthStore = create<AuthState>()(
       }),
 
       logout: () => {
+        // Flush any unsent progress to Nostr before clearing session
+        flushSync();
         resetUserRelays();
         clearNip46Session();
         useProfileCache.getState().reset();
         useBadgesCache.getState().reset();
-        useGoalsStore.getState().reset();
+        // Goals (XP, level, achievements) are NOT reset on logout — they persist
+        // in localStorage and get merged on next login via loadFromSync's Math.max.
+        // Resetting here caused level loss when re-logging in from a device that
+        // hadn't synced its highest state to Nostr yet.
         set({
           isConnected: false,
           user: null,
