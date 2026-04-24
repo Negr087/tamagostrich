@@ -86,6 +86,15 @@ export const T = {
     goalsAchievements: 'Logros',
     goalsUnlocked: '✓ Desbloqueado',
     goalsLevelUp: (n: number) => `¡Nivel ${n}! 🎉`,
+    // Rewards
+    goalsRewardsTitle: 'Recompensas en sats',
+    goalsRewardsSubtitle: 'Alcanzá estos niveles y recibís sats directamente en tu wallet',
+    goalsRewardClaim: (sats: number) => `Reclamar ${sats} sats`,
+    goalsRewardClaiming: 'Enviando...',
+    goalsRewardClaimed: (sats: number) => `⚡ ${sats} sats recibidos`,
+    goalsRewardLocked: (lvl: number) => `Disponible en nivel ${lvl}`,
+    goalsRewardNoLud16: 'Agregá un lightning address a tu perfil Nostr para recibir sats',
+    goalsRewardError: 'No se pudo procesar. Intentá de nuevo.',
 
     // Badges
     badgesTitle: 'Insignias',
@@ -178,6 +187,15 @@ export const T = {
     goalsAchievements: 'Achievements',
     goalsUnlocked: '✓ Unlocked',
     goalsLevelUp: (n: number) => `Level ${n}! 🎉`,
+    // Rewards
+    goalsRewardsTitle: 'Sats rewards',
+    goalsRewardsSubtitle: 'Reach these levels and receive sats directly to your wallet',
+    goalsRewardClaim: (sats: number) => `Claim ${sats} sats`,
+    goalsRewardClaiming: 'Sending...',
+    goalsRewardClaimed: (sats: number) => `⚡ ${sats} sats received`,
+    goalsRewardLocked: (lvl: number) => `Unlocks at level ${lvl}`,
+    goalsRewardNoLud16: 'Add a lightning address to your Nostr profile to receive sats',
+    goalsRewardError: 'Could not process. Please try again.',
 
     // Badges
     badgesTitle: 'Badges',

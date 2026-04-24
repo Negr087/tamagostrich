@@ -71,6 +71,7 @@ async function doPublish() {
       actionCounts: goals.actionCounts,
       lastActiveDay: goals.lastActiveDay,
       streakDays: goals.streakDays,
+      claimedRewards: goals.claimedRewards,
     },
   });
 }

@@ -164,9 +164,11 @@ interface GoalsState {
   streakDays: number;
   justLeveledUp: boolean;
   recentUnlocks: string[];
+  claimedRewards: string[];
 
   recordAction: (action: NoriAction, detail?: string) => void;
-  loadFromSync: (remote: { xp: number; level: number; unlockedAchievements: string[]; actionCounts: Record<string, number>; lastActiveDay: string | null; streakDays: number }) => void;
+  markRewardClaimed: (milestone: string) => void;
+  loadFromSync: (remote: { xp: number; level: number; unlockedAchievements: string[]; actionCounts: Record<string, number>; lastActiveDay: string | null; streakDays: number; claimedRewards?: string[] }) => void;
   clearNotifications: () => void;
   reset: () => void;
 }
@@ -200,6 +202,7 @@ export const useGoalsStore = create<GoalsState>()(
       streakDays: 0,
       justLeveledUp: false,
       recentUnlocks: [],
+      claimedRewards: [],
 
       recordAction: (action, detail) => {
         const s = get();
@@ -246,6 +249,12 @@ export const useGoalsStore = create<GoalsState>()(
         });
       },
 
+      markRewardClaimed: (milestone) => {
+        const s = get();
+        if (s.claimedRewards.includes(milestone)) return;
+        set({ claimedRewards: [...s.claimedRewards, milestone] });
+      },
+
       loadFromSync: (remote) => {
         const s = get();
         const newXP = Math.max(s.xp, remote.xp);
@@ -261,6 +270,7 @@ export const useGoalsStore = create<GoalsState>()(
         const newLastActive = (!s.lastActiveDay || (remote.lastActiveDay && remote.lastActiveDay > s.lastActiveDay))
           ? remote.lastActiveDay
           : s.lastActiveDay;
+        const allClaimed = [...new Set([...s.claimedRewards, ...(remote.claimedRewards ?? [])])];
 
         set({
           xp: newXP,
@@ -269,6 +279,7 @@ export const useGoalsStore = create<GoalsState>()(
           unlockedAchievements: allAchievements,
           streakDays: newStreak,
           lastActiveDay: newLastActive,
+          claimedRewards: allClaimed,
         });
       },
 
@@ -277,6 +288,7 @@ export const useGoalsStore = create<GoalsState>()(
       reset: () => set({
         xp: 0, level: 1, unlockedAchievements: [], actionCounts: INITIAL_COUNTS,
         lastActiveDay: null, streakDays: 0, justLeveledUp: false, recentUnlocks: [],
+        claimedRewards: [],
       }),
     }),
     {
@@ -284,6 +296,7 @@ export const useGoalsStore = create<GoalsState>()(
       partialize: s => ({
         xp: s.xp, level: s.level, unlockedAchievements: s.unlockedAchievements,
         actionCounts: s.actionCounts, lastActiveDay: s.lastActiveDay, streakDays: s.streakDays,
+        claimedRewards: s.claimedRewards,
       }),
     }
   )

@@ -442,6 +442,7 @@ export interface PetStatePayload {
     actionCounts: Record<string, number>;
     lastActiveDay: string | null;
     streakDays: number;
+    claimedRewards?: string[];
   };
 }
 
