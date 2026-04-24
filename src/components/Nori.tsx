@@ -503,29 +503,7 @@ export default function NoriTamagotchi() {
     };
   }, [isConnected, profile, animalType]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!isConnected || !profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center px-6">
-          <div className="text-6xl mb-4">🪶</div>
-          <h2 className="text-2xl font-extrabold mb-2" style={{
-            background: 'linear-gradient(90deg, #d946ef, #a855f7, #b4f953)',
-            backgroundSize: '200% auto',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            animation: 'gradientShift 5s linear infinite',
-          }}>{t.petWaitingTitle}</h2>
-          <p className="font-bold text-lc-muted leading-relaxed mt-3">
-            <span className="block text-base">{t.petWaitingLine1}</span>
-            <span className="block text-lg">{t.petWaitingLine2}</span>
-            <span className="block text-xl">{t.petWaitingLine3}</span>
-            <span className="block text-2xl text-lc-muted">{t.petWaitingLine4}</span>
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!isConnected || !profile) return null;
 
   return (
     <>

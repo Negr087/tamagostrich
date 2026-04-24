@@ -40,7 +40,7 @@ export default function EggHatch() {
   }
 
   function handleStart() {
-    setAnimalType('avestruz');
+    setAnimalType('nori');
     setBodyColor(PURPLE);
     setHasChosen(true);
   }

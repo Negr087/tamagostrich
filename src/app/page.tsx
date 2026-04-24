@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
 import NoriTamagotchi from '@/components/Nori';
 import EggHatch from '@/components/EggHatch';
+import LandingPage from '@/components/LandingPage';
 import { useAuthStore } from '@/store/auth';
 import { useNavStore, Section } from '@/store/nav';
 import { useAppearanceStore } from '@/store/appearance';
@@ -41,7 +42,7 @@ export default function Home() {
     <main className="min-h-screen bg-lc-black/80">
       <Navbar />
       {!isConnected ? (
-        <NoriTamagotchi />
+        <LandingPage />
       ) : activeSection === 'nori' ? (
         <NoriTamagotchi />
       ) : activeSection === 'profile' ? (

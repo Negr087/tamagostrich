@@ -26,7 +26,7 @@ export const useAppearanceStore = create<AppearanceState>()(
   persist(
     (set) => ({
       bodyColor:  '#9370DB',
-      animalType: 'avestruz',
+      animalType: 'nori',
       hasChosen:  false,
       setBodyColor:  (bodyColor)  => set({ bodyColor }),
       setAnimalType: (animalType) => set({ animalType }),

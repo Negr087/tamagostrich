@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 
 // ─── TYPES ───────────────────────────────────────────────────────────
-export type AnimalType = 'avestruz' | 'llama' | 'toro' | 'gorila' | 'tigre' | 'gato' | 'ardilla' | 'buho';
+export type AnimalType = 'nori' | 'avestruz' | 'llama' | 'toro' | 'gorila' | 'tigre' | 'gato' | 'ardilla' | 'buho';
 export type PetAnim = 'bob' | 'sleep' | 'zap' | 'spin' | 'tilt' | 'nod' | 'pulse';
 
 export const ANIMAL_META: Record<AnimalType, { nameEs: string; nameEn: string; emoji: string; defaultColor: string }> = {
+  nori:     { nameEs: 'Nori',     nameEn: 'Nori',     emoji: '🪶', defaultColor: '#9370DB' },
   avestruz: { nameEs: 'Avestruz', nameEn: 'Ostrich',  emoji: '🦚', defaultColor: '#9370DB' },
   llama:    { nameEs: 'Llama',    nameEn: 'Llama',    emoji: '🦙', defaultColor: '#C8A46E' },
   toro:     { nameEs: 'Toro',     nameEn: 'Bull',     emoji: '🐂', defaultColor: '#6B3A2A' },
@@ -114,6 +115,7 @@ async function loadGLTF(scene: THREE.Scene, m: PetMats, path: string): Promise<P
 
 // Call once on app mount — kicks off all GLB downloads in parallel
 export const GLB_PATHS: Partial<Record<AnimalType, string>> = {
+  nori:     '/mascota.glb',
   avestruz: '/ostrich.glb',
   llama:    '/llama.glb',
   toro:     '/toro.glb',
@@ -133,6 +135,7 @@ export function preloadGLBs(): void {
 // ─── DISPATCH ────────────────────────────────────────────────────────
 export async function buildAnimal(scene: THREE.Scene, mats: PetMats, type: AnimalType): Promise<PetParts> {
   switch (type) {
+    case 'nori':     return loadGLTF(scene, mats, '/mascota.glb');
     case 'avestruz': return loadGLTF(scene, mats, '/ostrich.glb');
     case 'llama':    return loadGLTF(scene, mats, '/llama.glb');
     case 'toro':     return loadGLTF(scene, mats, '/toro.glb');
