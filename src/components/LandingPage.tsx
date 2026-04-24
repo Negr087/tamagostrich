@@ -174,10 +174,10 @@ export default function LandingPage() {
               },
               {
                 emoji: '🏆',
-                titleEs: 'Logros y niveles',
-                titleEn: 'Achievements & levels',
-                descEs:  'Subí de nivel construyendo tu identidad Nostr. Desbloqueá insignias por zaps enviados, notas publicadas y más.',
-                descEn:  'Level up by building your Nostr identity. Unlock badges for zaps sent, notes published and more.',
+                titleEs: 'Niveles y sats reales',
+                titleEn: 'Levels & real sats',
+                descEs:  'Subí de nivel y desbloqueá logros. Al llegar al nivel 10 o al máximo recibís sats directo en tu wallet vía Lightning.',
+                descEn:  'Level up and unlock achievements. Reach level 10 or max level and receive sats straight to your Lightning wallet.',
               },
             ].map((f) => (
               <div
@@ -191,6 +191,50 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ── SATS REWARDS ───────────────────────────────────────── */}
+        <section className="max-w-xl mx-auto px-6 pb-20">
+          <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: '#b4f953' }}>
+            {es ? 'Premios en sats' : 'Sats rewards'}
+          </p>
+          <p className="text-center text-sm text-lc-muted mb-7">
+            {es
+              ? 'Alcanzá estos niveles y recibís sats reales en tu wallet Lightning'
+              : 'Reach these levels and get real sats sent to your Lightning wallet'}
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { level: 10, sats: 210,  emoji: '⚡', tag: null },
+              { level: 21, sats: 420,  emoji: '🏆', tag: es ? 'Nivel máximo' : 'Max level' },
+            ].map(({ level, sats, emoji, tag }) => (
+              <div
+                key={level}
+                className="lc-card p-5 flex flex-col items-center gap-2 text-center"
+                style={{ background: 'rgba(180,249,83,0.04)', borderColor: 'rgba(180,249,83,0.2)' }}
+              >
+                <span className="text-4xl">{emoji}</span>
+                <div>
+                  <span className="text-[11px] font-bold text-lc-muted uppercase tracking-wider">
+                    {es ? `Nivel ${level}` : `Level ${level}`}
+                  </span>
+                  {tag && (
+                    <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded font-semibold" style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316' }}>
+                      {tag}
+                    </span>
+                  )}
+                </div>
+                <div className="text-2xl font-black" style={{ color: '#b4f953' }}>
+                  {sats} <span className="text-sm font-semibold text-lc-muted">sats</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-[10px] text-lc-muted/40 mt-4">
+            {es
+              ? 'Pagado automáticamente a tu lightning address (lud16) al reclamar'
+              : 'Automatically paid to your lightning address (lud16) on claim'}
+          </p>
         </section>
 
         {/* ── HOW IT WORKS ───────────────────────────────────────── */}

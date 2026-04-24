@@ -17,6 +17,7 @@ Tamagostrich es un tamagotchi descentralizado donde el estado de tu mascota vive
 - **Sistema de XP y niveles** — 21 niveles con umbrales de XP progresivos; cada interacción suma XP
 - **Logros (achievements)** — 40+ badges desbloqueables por zaps, notas, seguidores, rachas diarias y más
 - **Racha diaria (streak)** — Contador de días consecutivos de actividad
+- **Premios en sats** — Al llegar al nivel 10 (210 sats) y al nivel máximo (420 sats), el app paga automáticamente vía NWC (NIP-47) a la lightning address del usuario
 - **Landing page** — Página de bienvenida con egg animado, features, how-it-works y preview de stats para usuarios no conectados
 - **Perfil Nostr** — Avatar, banner, bio, NIP-05, stats sociales y timeline con imágenes/videos
 - **Badges NIP-58** — Visualización de badges recibidos
@@ -90,6 +91,21 @@ src/
 | 🐿️ Ardilla | `ardilla.glb` |
 | 🦉 Búho | `buho.glb` |
 
+## Premios en sats
+
+| Milestone | Sats | Requisito |
+|-----------|------|-----------|
+| Nivel 10  | 210 sats | Llegar al nivel 10 con actividad Nostr |
+| Nivel 21 (máx) | 420 sats | Llegar al nivel máximo |
+
+El pago es automático vía **NWC (NIP-47)**. El operador configura su wallet en `.env.local`:
+
+```bash
+NWC_CONNECTION_STRING="nostr+walletconnect://..."
+```
+
+Compatible con cualquier wallet NWC: Primal, Rizful, Coinos, Alby, Mutiny, etc. Los sats se envían a la `lud16` (lightning address) del perfil Nostr del usuario. El estado de "ya reclamado" se guarda en el evento NIP-78 del usuario para evitar doble cobro.
+
 ## NIPs implementados
 
 | NIP | Descripción | Uso |
@@ -99,6 +115,7 @@ src/
 | NIP-05 | DNS verification | Badge verificado en perfil |
 | NIP-07 | Browser extension | Login con Alby/nos2x |
 | NIP-46 | Nostr Connect | Login con bunker/Amber (QR) |
+| NIP-47 | Nostr Wallet Connect | Pagos automáticos de sats al alcanzar milestones |
 | NIP-57 | Zaps | Detección de zap receipts (kind 9735) |
 | NIP-58 | Badges | Visualización de badges recibidos |
 | NIP-65 | Relay list | Relays propios del usuario |
