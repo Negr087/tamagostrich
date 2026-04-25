@@ -83,13 +83,14 @@ function scheduleSync() {
   }, 10000);
 }
 
-// Flush any pending sync immediately — call before logout so progress isn't lost
-export function flushSync() {
+// Flush any pending sync immediately and wait for it to complete.
+// Returns a promise so callers that need Nostr to be up-to-date can await it.
+export function flushSync(): Promise<void> {
   if (syncTimer) {
     clearTimeout(syncTimer);
     syncTimer = null;
   }
-  doPublish().catch(() => {});
+  return doPublish().catch(() => {});
 }
 
 const ACTION_EFFECTS: Record<NoriAction, { happiness: number; energy: number; social: number }> = {

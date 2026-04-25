@@ -25,6 +25,11 @@ export default function Goals() {
     setClaimStates(s => ({ ...s, [milestoneId]: 'loading' }));
     setErrorMsgs(s => ({ ...s, [milestoneId]: '' }));
 
+    // Publish latest goals state to Nostr first so the server can verify it.
+    // Then wait 1.5 s for the event to propagate to relay indexes.
+    await flushSync();
+    await new Promise(r => setTimeout(r, 1500));
+
     try {
       const res = await fetch('/api/claim-reward', {
         method: 'POST',
