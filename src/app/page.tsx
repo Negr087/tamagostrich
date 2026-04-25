@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth';
 import { useNavStore, Section } from '@/store/nav';
 import { useAppearanceStore } from '@/store/appearance';
 import { useNoriStore } from '@/store/nori';
+import { fetchGLTF, GLB_PATHS } from '@/lib/petModels';
 
 // Lazy-load heavy sections — they only download when first visited
 const Profile = dynamic(() => import('@/components/Profile'), { ssr: false });
@@ -30,6 +31,15 @@ export default function Home() {
   useEffect(() => {
     if (isConnected && pubkey) loadFromNostr(pubkey);
   }, [isConnected, pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Start downloading the user's current animal GLB as soon as they're connected,
+  // so it's ready (or nearly) when they navigate to the nori tab.
+  const { animalType } = useAppearanceStore();
+  useEffect(() => {
+    if (!isConnected) return;
+    const path = GLB_PATHS[animalType];
+    if (path) fetchGLTF(path);
+  }, [isConnected, animalType]);
 
   // Restore section from URL hash on mount and listen for back/forward
   useEffect(() => {
