@@ -10,15 +10,16 @@ const MILESTONE_MAP = Object.fromEntries(REWARD_MILESTONES.map((m) => [m.id, m])
 // Cleared on server restart, but the NIP-78 check below handles that case.
 const processing = new Set<string>();
 
-// Fetch the most recent Nostr event matching a filter from multiple relays.
+// Fetch the most recent Nostr event from all relays in parallel.
+// Takes the event with the highest created_at so we always get the freshest state.
 async function fetchNostrEvent(filter: object): Promise<Record<string, unknown> | null> {
   const relays = ['wss://relay.primal.net', 'wss://relay.nostr.band', 'wss://nos.lol'];
-
-  for (const relayUrl of relays) {
-    const event = await fetchFromRelay(relayUrl, filter);
-    if (event) return event;
-  }
-  return null;
+  const results = await Promise.all(relays.map((r) => fetchFromRelay(r, filter)));
+  const events = results.filter(Boolean) as Record<string, unknown>[];
+  if (events.length === 0) return null;
+  return events.reduce((best, ev) =>
+    (ev.created_at as number) > (best.created_at as number) ? ev : best,
+  );
 }
 
 function fetchFromRelay(

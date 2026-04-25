@@ -46,7 +46,7 @@ export default function Goals() {
       }
 
       markRewardClaimed(milestoneId);
-      flushSync(); // persist claimed state to Nostr immediately
+      await flushSync(); // wait for NIP-78 with claimedRewards to land on Nostr
       setClaimStates(s => ({ ...s, [milestoneId]: 'success' }));
     } catch {
       setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));

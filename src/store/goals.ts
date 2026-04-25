@@ -258,7 +258,8 @@ export const useGoalsStore = create<GoalsState>()(
       loadFromSync: (remote) => {
         const s = get();
         const newXP = Math.max(s.xp, remote.xp);
-        if (newXP === s.xp && remote.unlockedAchievements.every(id => s.unlockedAchievements.includes(id))) return;
+        const remoteHasNewClaimed = (remote.claimedRewards ?? []).some(id => !s.claimedRewards.includes(id));
+        if (newXP === s.xp && remote.unlockedAchievements.every(id => s.unlockedAchievements.includes(id)) && !remoteHasNewClaimed) return;
 
         const newLevel = xpToLevel(newXP);
         const newCounts = { ...s.actionCounts };
