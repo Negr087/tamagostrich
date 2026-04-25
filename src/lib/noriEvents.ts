@@ -58,11 +58,11 @@ export function startNoriListener(pubkey: string) {
 
     if (sessionId !== mySession) return;
 
-    // 10-minute lookback for interactions (zaps, reactions, etc.)
+    // 24-hour lookback for interactions so events aren't missed if the app was closed.
     // For kind:3 (followers) we use NO lookback — only events published after the listener
     // started. Any relay replaying old contact-list updates would cause false "new follower"
     // notifications for users who already follow and just updated their contact list.
-    const since = listenerStartTime - 600;
+    const since = listenerStartTime - 86400; // 24 h
     const followerSince = listenerStartTime; // no lookback for follows
 
     subscription = ndk.subscribe(
@@ -75,8 +75,10 @@ export function startNoriListener(pubkey: string) {
         { kinds: [6],    '#p': [pubkey], since },
         // Contact lists that include user — tight window to avoid replay of existing followers
         { kinds: [3],    '#p': [pubkey], since: followerSince },
-        // Mentions in notes
+        // Notes that mention the user (replies, tags)
         { kinds: [1],    '#p': [pubkey], since },
+        // User's own published notes — required so note_published fires correctly
+        { kinds: [1],    authors: [pubkey], since },
       ],
       { closeOnEose: false }
     );
