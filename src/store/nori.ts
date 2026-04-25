@@ -288,6 +288,8 @@ export const useNoriStore = create<NoriState>()(
         } finally {
           hasLoadedFromNostr = true; // allow publishing now that remote state was fetched
           set({ isSyncingFromNostr: false });
+          // Publish merged state promptly so other devices pick it up quickly
+          scheduleSync();
         }
       },
     }),
