@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import LoginModal from './LoginModal';
 import { useLang } from '@/lib/i18n';
+import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
+import { MAX_LEVEL } from '@/store/goals';
 
 const GRADIENT_TEXT: React.CSSProperties = {
   background: 'linear-gradient(90deg, #d946ef, #a855f7, #b4f953)',
@@ -176,8 +178,8 @@ export default function LandingPage() {
                 emoji: '🏆',
                 titleEs: 'Niveles y sats reales',
                 titleEn: 'Levels & real sats',
-                descEs:  'Subí de nivel y desbloqueá logros. Al llegar al nivel 10 o al máximo recibís sats directo en tu wallet vía Lightning.',
-                descEn:  'Level up and unlock achievements. Reach level 10 or max level and receive sats straight to your Lightning wallet.',
+                descEs:  'Subí de nivel, mantené rachas y desbloqueá logros. Hay 5 hitos con premios reales en sats vía Lightning.',
+                descEn:  'Level up, keep streaks and unlock achievements. There are 5 milestones with real sats rewards via Lightning.',
               },
             ].map((f) => (
               <div
@@ -200,35 +202,39 @@ export default function LandingPage() {
           </p>
           <p className="text-center text-sm text-lc-muted mb-7">
             {es
-              ? 'Alcanzá estos niveles y recibís sats reales en tu wallet Lightning'
-              : 'Reach these levels and get real sats sent to your Lightning wallet'}
+              ? 'Subí de nivel o mantené una racha y recibís sats reales en tu wallet Lightning'
+              : 'Level up or keep a streak and get real sats sent to your Lightning wallet'}
           </p>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { level: 10, sats: 210,  emoji: '⚡', tag: null },
-              { level: 21, sats: 420,  emoji: '🏆', tag: es ? 'Nivel máximo' : 'Max level' },
-            ].map(({ level, sats, emoji, tag }) => (
-              <div
-                key={level}
-                className="lc-card p-5 flex flex-col items-center gap-2 text-center"
-                style={{ background: 'rgba(180,249,83,0.04)', borderColor: 'rgba(180,249,83,0.2)' }}
-              >
-                <span className="text-4xl">{emoji}</span>
-                <div>
-                  <span className="text-[11px] font-bold text-lc-muted uppercase tracking-wider">
-                    {es ? `Nivel ${level}` : `Level ${level}`}
-                  </span>
-                  {tag && (
-                    <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded font-semibold" style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316' }}>
-                      {tag}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {REWARD_MILESTONES.map((m) => {
+              const isMax = m.requiredLevel === MAX_LEVEL;
+              const label = es ? m.labelEs : m.labelEn;
+              return (
+                <div
+                  key={m.id}
+                  className={`lc-card p-4 flex flex-col items-center gap-2 text-center${isMax ? ' sm:col-span-1' : ''}`}
+                  style={{
+                    background: isMax ? 'rgba(180,249,83,0.07)' : 'rgba(180,249,83,0.03)',
+                    borderColor: isMax ? 'rgba(180,249,83,0.35)' : 'rgba(180,249,83,0.15)',
+                  }}
+                >
+                  <span className="text-3xl">{m.emoji}</span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-[11px] font-bold text-lc-muted uppercase tracking-wider leading-tight">
+                      {label}
                     </span>
-                  )}
+                    {isMax && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold" style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316' }}>
+                        MAX
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xl font-black" style={{ color: '#b4f953' }}>
+                    {m.sats} <span className="text-xs font-semibold text-lc-muted">sats</span>
+                  </div>
                 </div>
-                <div className="text-2xl font-black" style={{ color: '#b4f953' }}>
-                  {sats} <span className="text-sm font-semibold text-lc-muted">sats</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <p className="text-center text-[10px] text-lc-muted/40 mt-4">
             {es
