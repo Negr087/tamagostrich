@@ -119,11 +119,18 @@ export async function POST(req: NextRequest) {
     }
 
     const goals = petPayload?.goals as Record<string, unknown> | undefined;
-    const userLevel = (goals?.level as number) ?? 0;
+    const userLevel  = (goals?.level      as number) ?? 0;
+    const userStreak = (goals?.streakDays as number) ?? 0;
 
-    if (userLevel < config.requiredLevel) {
+    if (config.requiredLevel !== undefined && userLevel < config.requiredLevel) {
       return NextResponse.json(
         { error: `You need level ${config.requiredLevel} (you are level ${userLevel})` },
+        { status: 403 },
+      );
+    }
+    if (config.requiredStreak !== undefined && userStreak < config.requiredStreak) {
+      return NextResponse.json(
+        { error: `You need a ${config.requiredStreak}-day streak (you have ${userStreak})` },
         { status: 403 },
       );
     }

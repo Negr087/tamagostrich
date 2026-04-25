@@ -95,7 +95,10 @@ src/
 
 | Milestone | Sats | Requisito |
 |-----------|------|-----------|
-| Nivel 10  | 210 sats | Llegar al nivel 10 con actividad Nostr |
+| Nivel 5 | 50 sats | Llegar al nivel 5 |
+| Racha 7 días | 77 sats | 7 días consecutivos de actividad Nostr |
+| Nivel 10 | 210 sats | Llegar al nivel 10 |
+| Racha 21 días | 210 sats | 21 días consecutivos de actividad Nostr |
 | Nivel 21 (máx) | 420 sats | Llegar al nivel máximo |
 
 El pago es automático vía **NWC (NIP-47)**. El operador configura su wallet en `.env.local`:

@@ -108,13 +108,23 @@ export default function Goals() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {REWARD_MILESTONES.map((m) => {
-              const reached   = level >= m.requiredLevel;
+              const reached   = m.requiredLevel  !== undefined ? level      >= m.requiredLevel
+                              : m.requiredStreak !== undefined ? streakDays >= m.requiredStreak
+                              : false;
               const claimed   = claimedRewards.includes(m.id);
               const state     = claimStates[m.id] ?? 'idle';
               const isLoading = state === 'loading';
               const isSuccess = state === 'success' || claimed;
               const isError   = state === 'error' || state === 'no_lud16';
               const errMsg    = errorMsgs[m.id];
+
+              const label = lang === 'es' ? m.labelEs : m.labelEn;
+              const isMax = m.requiredLevel === MAX_LEVEL;
+
+              // Progress hint shown when not yet reached
+              const progressHint = m.requiredLevel !== undefined
+                ? (lang === 'es' ? `Nivel ${level}/${m.requiredLevel}` : `Level ${level}/${m.requiredLevel}`)
+                : (lang === 'es' ? `${streakDays}/${m.requiredStreak} días` : `${streakDays}/${m.requiredStreak} days`);
 
               return (
                 <div
@@ -130,8 +140,8 @@ export default function Goals() {
                     <span className="text-3xl">{m.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-lc-white text-sm">
-                        {lang === 'es' ? `Nivel ${m.requiredLevel}` : `Level ${m.requiredLevel}`}
-                        {m.requiredLevel === MAX_LEVEL && (
+                        {label}
+                        {isMax && (
                           <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316' }}>MAX</span>
                         )}
                       </div>
@@ -148,7 +158,7 @@ export default function Goals() {
                     )}
                     {!reached && !isSuccess && (
                       <span className="text-[10px] text-lc-muted font-semibold">
-                        {t.goalsRewardLocked(m.requiredLevel)}
+                        {progressHint}
                       </span>
                     )}
                   </div>
