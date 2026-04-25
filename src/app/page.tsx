@@ -9,6 +9,7 @@ import LandingPage from '@/components/LandingPage';
 import { useAuthStore } from '@/store/auth';
 import { useNavStore, Section } from '@/store/nav';
 import { useAppearanceStore } from '@/store/appearance';
+import { useNoriStore } from '@/store/nori';
 
 // Lazy-load heavy sections — they only download when first visited
 const Profile = dynamic(() => import('@/components/Profile'), { ssr: false });
@@ -18,9 +19,17 @@ const Goals   = dynamic(() => import('@/components/Goals'),   { ssr: false });
 const VALID_SECTIONS: Section[] = ['nori', 'profile', 'badges', 'goals'];
 
 export default function Home() {
-  const { isConnected } = useAuthStore();
+  const { isConnected, profile } = useAuthStore();
   const { activeSection, setActiveSection } = useNavStore();
   const { hasChosen } = useAppearanceStore();
+  const { loadFromNostr } = useNoriStore();
+
+  // Sync pet state from Nostr on login — runs here so it always fires
+  // regardless of which section is active (fixes sync when URL is #goals etc.)
+  const pubkey = profile?.pubkey;
+  useEffect(() => {
+    if (isConnected && pubkey) loadFromNostr(pubkey);
+  }, [isConnected, pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore section from URL hash on mount and listen for back/forward
   useEffect(() => {

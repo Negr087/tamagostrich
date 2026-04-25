@@ -163,7 +163,7 @@ function useIdleTime(lastEventTime: number) {
 
 export default function NoriTamagotchi() {
   const { isConnected, profile } = useAuthStore();
-  const { stats, mood, activityLog, isListening, lastEventTime, loadFromNostr } = useNoriStore();
+  const { stats, mood, activityLog, isListening, lastEventTime } = useNoriStore();
   const { level, justLeveledUp, recentUnlocks, clearNotifications } = useGoalsStore();
   const { bodyColor, animalType, setBodyColor } = useAppearanceStore();
   const { t, lang } = useLang();
@@ -299,11 +299,6 @@ export default function NoriTamagotchi() {
     if (isConnected && pubkey) startNoriListener(pubkey);
     return () => stopNoriListener();
   }, [isConnected, pubkey]);
-
-  // Load pet state from Nostr on login
-  useEffect(() => {
-    if (isConnected && pubkey) loadFromNostr(pubkey);
-  }, [isConnected, pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Three.js scene — rebuilds when animal type changes
   useEffect(() => {
