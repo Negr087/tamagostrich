@@ -59,13 +59,21 @@ function clamp(val: number, min = 0, max = 100) {
 // which would overwrite a more-advanced state from another device.
 let hasLoadedFromNostr = false;
 
+// NIP-46 (Amber) users: only publish once per session to avoid repeated signing prompts.
+// Background syncs are skipped after the first successful publish.
+let nip46SyncDone = false;
+
 // Debounced publish — fires 10s after the last stats change
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function doPublish() {
   const state = useNoriStore.getState();
   if (state.isSyncingFromNostr || !hasLoadedFromNostr) return;
-  const { publishPetState } = await import('@/lib/nostr');
+  const { publishPetState, getNDK, getNip46Session } = await import('@/lib/nostr');
+
+  const isNip46 = !getNDK().signer && !!getNip46Session();
+  if (isNip46 && nip46SyncDone) return;
+
   const { useAppearanceStore } = await import('@/store/appearance');
   const goals = useGoalsStore.getState();
   const app = useAppearanceStore.getState();
@@ -90,6 +98,7 @@ async function doPublish() {
       hasChosen: app.hasChosen,
     },
   });
+  if (isNip46) nip46SyncDone = true;
 }
 
 function scheduleSync() {
@@ -106,6 +115,7 @@ export function flushSync(): Promise<void> {
     clearTimeout(syncTimer);
     syncTimer = null;
   }
+  nip46SyncDone = false; // allow one final publish on logout
   return doPublish().catch(() => {});
 }
 
@@ -226,6 +236,9 @@ export const useNoriStore = create<NoriState>()(
       },
 
       loadFromNostr: async (pubkey: string) => {
+        // Reset sync flags so each login session gets a fresh publish cycle
+        hasLoadedFromNostr = false;
+        nip46SyncDone = false;
         set({ isSyncingFromNostr: true });
         try {
           const { fetchPetState, connectNDK } = await import('@/lib/nostr');

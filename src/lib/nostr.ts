@@ -455,17 +455,42 @@ const PET_D_TAG = 'tamagostrich-pet-state';
 
 export async function publishPetState(payload: PetStatePayload): Promise<void> {
   const ndk = getNDK();
-  if (!ndk.signer) return;
 
-  const event = new NDKEvent(ndk);
-  event.kind = 30078;
-  event.content = JSON.stringify(payload);
-  event.tags = [['d', PET_D_TAG]];
+  if (ndk.signer) {
+    const event = new NDKEvent(ndk);
+    event.kind = 30078;
+    event.content = JSON.stringify(payload);
+    event.tags = [['d', PET_D_TAG]];
+    try {
+      await event.publish();
+    } catch (e) {
+      console.warn('[pet-sync] publish failed:', e);
+    }
+    return;
+  }
 
-  try {
-    await event.publish();
-  } catch (e) {
-    console.warn('[pet-sync] publish failed:', e);
+  // NIP-46 fallback: sign via remote signer (Amber) when ndk.signer is not set.
+  // This happens when logging in via QR code — loginWithRemoteSigner doesn't set ndk.signer.
+  if (nip46Session) {
+    try {
+      const { useAuthStore } = await import('@/store/auth');
+      const pubkey = useAuthStore.getState().profile?.pubkey;
+      if (!pubkey) return;
+      const signed = await signEventViaNip46({
+        kind: 30078,
+        pubkey,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['d', PET_D_TAG]],
+        content: JSON.stringify(payload),
+      } as UnsignedEvent);
+      if (!signed) { console.warn('[pet-sync] NIP-46 sign timed out'); return; }
+      const pool = new SimplePool();
+      await Promise.allSettled(pool.publish(POPULAR_RELAYS, signed));
+      pool.close(POPULAR_RELAYS);
+      console.log('[pet-sync] NIP-46 publish ok');
+    } catch (e) {
+      console.warn('[pet-sync] NIP-46 publish failed:', e);
+    }
   }
 }
 
