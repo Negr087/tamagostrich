@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import WebSocket from 'ws';
+
+// Vercel Pro: up to 60s. Hobby: capped at 10s regardless of this value.
+export const maxDuration = 30;
 import { getInvoiceFromLightningAddress } from '@/lib/lnurl';
 import { payInvoiceViaNwc } from '@/lib/nwc';
 import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
@@ -25,7 +28,7 @@ async function fetchNostrEvent(filter: object): Promise<Record<string, unknown> 
 function fetchFromRelay(
   relayUrl: string,
   filter: object,
-  timeoutMs = 5000,
+  timeoutMs = 3000,
 ): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
     let ws: WebSocket;

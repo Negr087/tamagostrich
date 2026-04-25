@@ -24,12 +24,9 @@ function parseNwcString(nwcString: string): NwcConfig {
 interface AttemptResult {
   ok: boolean;
   error?: string;
-  // true if the payment EVENT was delivered to the relay before any error occurred
   delivered: boolean;
 }
 
-// Single WebSocket attempt. When sendRequest=false it only subscribes and waits
-// for an existing response (poll mode — used to recover after a dropped connection).
 function wsAttempt(
   reqEvent: ReturnType<typeof finalizeEvent>,
   relayUrl: string,
@@ -47,6 +44,7 @@ function wsAttempt(
       return;
     }
 
+    // Optimistic delivered: set true on send, cleared to false if relay explicitly rejects
     let delivered = false;
     let settled = false;
 
@@ -59,49 +57,85 @@ function wsAttempt(
     }
 
     const timer = setTimeout(
-      () => settle({ ok: false, error: 'NWC timeout — payment may still be processing', delivered }),
+      () => settle({ ok: false, error: 'NWC timeout — wallet did not respond in time', delivered }),
       timeoutMs,
     );
 
     ws.on('open', () => {
+      const since = reqEvent.created_at - 1;
+      // Primary: strict filter by request event id (NIP-47 compliant wallets)
       ws.send(JSON.stringify([
         'REQ', 'nwc-r',
         { kinds: [23195], '#e': [reqEvent.id], authors: [walletPubkey], limit: 1 },
       ]));
+      // Fallback: broad filter — catches wallets that omit the #e tag in responses
+      ws.send(JSON.stringify([
+        'REQ', 'nwc-r2',
+        { kinds: [23195], authors: [walletPubkey], since, limit: 5 },
+      ]));
       if (sendRequest) {
         ws.send(JSON.stringify(['EVENT', reqEvent]));
-        delivered = true;
+        delivered = true; // optimistic until relay sends OK false
+        console.log('[nwc] event sent, id:', reqEvent.id);
       }
     });
 
     ws.on('message', async (data) => {
       try {
-        const msg = JSON.parse(data.toString());
+        const msg = JSON.parse(data.toString()) as unknown[];
+        const type = msg[0] as string;
 
-        // In poll mode, EOSE means the response isn't on the relay yet
-        if (msg[0] === 'EOSE' && !sendRequest) {
+        // Relay confirmed or rejected our event
+        if (type === 'OK' && sendRequest && msg[1] === reqEvent.id) {
+          if (msg[2] === false) {
+            const reason = (msg[3] as string) ?? 'unknown';
+            console.error('[nwc] relay rejected event:', reason);
+            delivered = false;
+            settle({ ok: false, error: `Relay rejected payment event: ${reason}`, delivered: false });
+          } else {
+            console.log('[nwc] relay accepted event — waiting for wallet response');
+          }
+          return;
+        }
+
+        // Relay requires NIP-42 auth — we don't support it
+        if (type === 'AUTH') {
+          console.error('[nwc] relay requires NIP-42 authentication — not supported');
+          settle({ ok: false, error: 'NWC relay requires authentication (NIP-42) — use a different relay', delivered: false });
+          return;
+        }
+
+        // Poll mode: EOSE on primary sub means response is not on relay yet
+        if (type === 'EOSE' && msg[1] === 'nwc-r' && !sendRequest) {
           settle({ ok: false, error: 'Payment response not found on relay', delivered });
           return;
         }
 
-        if (msg[0] !== 'EVENT' || msg[2]?.kind !== 23195) return;
+        if (type !== 'EVENT' || (msg[2] as Record<string, unknown>)?.kind !== 23195) return;
 
-        const decrypted = await nip04.decrypt(secret, walletPubkey, msg[2].content);
-        const response = JSON.parse(decrypted);
+        const ev = msg[2] as Record<string, unknown>;
+        const decrypted = await nip04.decrypt(secret, walletPubkey, ev.content as string);
+        const response = JSON.parse(decrypted) as Record<string, unknown>;
 
-        if (response.result?.preimage) {
+        if ((response.result as Record<string, unknown>)?.preimage) {
+          console.log('[nwc] payment confirmed by wallet');
           settle({ ok: true, delivered });
         } else {
-          settle({ ok: false, error: response.error?.message ?? 'Payment rejected by wallet', delivered });
+          const errMsg = (response.error as Record<string, unknown>)?.message as string
+            ?? 'Payment rejected by wallet';
+          console.error('[nwc] wallet error:', errMsg);
+          settle({ ok: false, error: errMsg, delivered });
         }
       } catch (e: unknown) {
-        settle({ ok: false, error: `NWC response error: ${e instanceof Error ? e.message : String(e)}`, delivered });
+        settle({ ok: false, error: `NWC error: ${e instanceof Error ? e.message : String(e)}`, delivered });
       }
     });
 
-    ws.on('error', (err) => settle({ ok: false, error: err.message, delivered }));
+    ws.on('error', (err) => {
+      console.error('[nwc] websocket error:', err.message);
+      settle({ ok: false, error: err.message, delivered });
+    });
     ws.on('close', () => {
-      // Closed without a proper response — settle only if not already settled
       settle({ ok: false, error: 'NWC relay connection closed unexpectedly', delivered });
     });
   });
@@ -121,17 +155,24 @@ export async function payInvoiceViaNwc(invoice: string, nwcString: string): Prom
     secretBytes,
   );
 
+  console.log('[nwc] paying invoice via relay:', relayUrl);
+  console.log('[nwc] wallet pubkey:', walletPubkey);
+
   // Primary attempt: send payment and wait for confirmation
   const first = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, true, 12000);
+  console.log('[nwc] primary result — ok:', first.ok, '| delivered:', first.delivered, '| error:', first.error);
   if (first.ok) return;
 
-  // If the payment event reached the relay but the connection dropped (e.g. 502),
-  // the wallet may have already processed the payment. Wait briefly then poll.
-  const shouldPoll = first.delivered || first.error?.includes('502') || first.error?.includes('closed');
-  if (shouldPoll) {
+  // If event reached relay, poll briefly for a delayed wallet response
+  if (first.delivered) {
     await new Promise((r) => setTimeout(r, 2500));
     const poll = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, false, 6000);
+    console.log('[nwc] poll result — ok:', poll.ok, '| error:', poll.error);
     if (poll.ok) return;
+    // Propagate real wallet rejections (not just timeouts/network gaps)
+    if (poll.error && !poll.error.includes('not found') && !poll.error.includes('timeout') && !poll.error.includes('closed')) {
+      throw new Error(poll.error);
+    }
   }
 
   throw new Error(first.error ?? 'Payment failed');
