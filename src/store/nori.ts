@@ -54,12 +54,17 @@ function clamp(val: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, val));
 }
 
+// Set to true once loadFromNostr has run at least once this session.
+// Guards against publishing stale localStorage state before fetching remote,
+// which would overwrite a more-advanced state from another device.
+let hasLoadedFromNostr = false;
+
 // Debounced publish — fires 10s after the last stats change
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function doPublish() {
   const state = useNoriStore.getState();
-  if (state.isSyncingFromNostr) return;
+  if (state.isSyncingFromNostr || !hasLoadedFromNostr) return;
   const { publishPetState } = await import('@/lib/nostr');
   const { useAppearanceStore } = await import('@/store/appearance');
   const goals = useGoalsStore.getState();
@@ -281,6 +286,7 @@ export const useNoriStore = create<NoriState>()(
         } catch (e) {
           console.warn('[pet-sync] load failed:', e);
         } finally {
+          hasLoadedFromNostr = true; // allow publishing now that remote state was fetched
           set({ isSyncingFromNostr: false });
         }
       },
