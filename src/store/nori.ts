@@ -61,7 +61,9 @@ async function doPublish() {
   const state = useNoriStore.getState();
   if (state.isSyncingFromNostr) return;
   const { publishPetState } = await import('@/lib/nostr');
+  const { useAppearanceStore } = await import('@/store/appearance');
   const goals = useGoalsStore.getState();
+  const app = useAppearanceStore.getState();
   await publishPetState({
     version: 1,
     stats: state.stats,
@@ -76,6 +78,11 @@ async function doPublish() {
       lastActiveDay: goals.lastActiveDay,
       streakDays: goals.streakDays,
       claimedRewards: goals.claimedRewards,
+    },
+    appearance: {
+      animalType: app.animalType,
+      bodyColor: app.bodyColor,
+      hasChosen: app.hasChosen,
     },
   });
 }
@@ -252,7 +259,24 @@ export const useNoriStore = create<NoriState>()(
           }
           // Always merge goals — take the best of both devices regardless of which is newer
           if (remote.goals) {
+            console.log('[pet-sync] remote goals — xp:', remote.goals.xp, 'level:', remote.goals.level,
+              'local xp:', useGoalsStore.getState().xp);
             useGoalsStore.getState().loadFromSync(remote.goals);
+            console.log('[pet-sync] after merge — xp:', useGoalsStore.getState().xp, 'level:', useGoalsStore.getState().level);
+          } else {
+            console.warn('[pet-sync] remote event has no goals field');
+          }
+          // Sync appearance (animal type + color) when remote state is adopted
+          if (remote.appearance && (localIsDefault || remoteIsNewer)) {
+            const { useAppearanceStore } = await import('@/store/appearance');
+            const { ANIMAL_META } = await import('@/lib/petModels');
+            const app = useAppearanceStore.getState();
+            const animalId = remote.appearance.animalType;
+            if (animalId in ANIMAL_META) {
+              app.setAnimalType(animalId as import('@/lib/petModels').AnimalType);
+            }
+            app.setBodyColor(remote.appearance.bodyColor);
+            if (remote.appearance.hasChosen) app.setHasChosen(true);
           }
         } catch (e) {
           console.warn('[pet-sync] load failed:', e);

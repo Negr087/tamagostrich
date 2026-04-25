@@ -444,6 +444,11 @@ export interface PetStatePayload {
     streakDays: number;
     claimedRewards?: string[];
   };
+  appearance?: {
+    animalType: string;
+    bodyColor: string;
+    hasChosen: boolean;
+  };
 }
 
 const PET_D_TAG = 'tamagostrich-pet-state';
