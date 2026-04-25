@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { NDKUser } from '@nostr-dev-kit/ndk';
-import { NostrProfile, parseProfile, LoginMethod, resetUserRelays, clearNip46Session } from '@/lib/nostr';
+import { NostrProfile, parseProfile, LoginMethod, resetUserRelays, clearNip46Session, clearNsecSession } from '@/lib/nostr';
 import type { Nip46Session } from '@/lib/nostr';
 import { useProfileCache } from './profileCache';
 import { useBadgesCache } from './badgesCache';
@@ -74,6 +74,7 @@ export const useAuthStore = create<AuthState>()(
         flushSync();
         resetUserRelays();
         clearNip46Session();
+        clearNsecSession();
         useProfileCache.getState().reset();
         useBadgesCache.getState().reset();
         // Goals (XP, level, achievements) are NOT reset on logout — they persist

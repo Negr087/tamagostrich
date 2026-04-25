@@ -128,9 +128,24 @@ export async function loginWithExtension(): Promise<NDKUser | null> {
   }
 }
 
+const NSEC_SESSION_KEY = 'nori-nsec-hex';
+
+export function restoreNsecSigner(): boolean {
+  if (typeof sessionStorage === 'undefined') return false;
+  const hex = sessionStorage.getItem(NSEC_SESSION_KEY);
+  if (!hex) return false;
+  const ndk = getNDK();
+  ndk.signer = new NDKPrivateKeySigner(hex);
+  return true;
+}
+
+export function clearNsecSession(): void {
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(NSEC_SESSION_KEY);
+}
+
 export async function loginWithNsec(nsec: string): Promise<NDKUser | null> {
   let privateKey: string;
-  
+
   try {
     if (nsec.startsWith('nsec')) {
       const decoded = nip19.decode(nsec);
@@ -144,14 +159,20 @@ export async function loginWithNsec(nsec: string): Promise<NDKUser | null> {
   } catch {
     throw new Error('Invalid nsec format');
   }
-  
+
   const ndk = getNDK();
   const signer = new NDKPrivateKeySigner(privateKey);
   ndk.signer = signer;
-  
+
+  // Store in sessionStorage so the signer survives page reloads within the same tab.
+  // sessionStorage is cleared when the tab/browser is closed — reasonable security tradeoff.
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(NSEC_SESSION_KEY, privateKey);
+  }
+
   const user = await signer.user();
   await user.fetchProfile();
-  
+
   return user;
 }
 

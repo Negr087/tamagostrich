@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { NDKNip07Signer } from '@nostr-dev-kit/ndk';
 import { useAuthStore } from '@/store/auth';
-import { getNDK, restoreNip46Session } from '@/lib/nostr';
+import { getNDK, restoreNip46Session, restoreNsecSigner } from '@/lib/nostr';
 
 export default function SessionRestorer() {
   useEffect(() => {
@@ -21,11 +21,13 @@ export default function SessionRestorer() {
       restoreSession();
     }
 
-    // Restore NDK signer so event signing keeps working
+    // Restore NDK signer so event signing keeps working after page reload
     if (profile) {
       const ndk = getNDK();
       if (loginMethod === 'extension' && typeof window !== 'undefined' && window.nostr) {
         ndk.signer = new NDKNip07Signer(4000, ndk);
+      } else if (loginMethod === 'nsec') {
+        restoreNsecSigner(); // restores from sessionStorage (survives reload, cleared on tab close)
       } else if (loginMethod === 'bunker' && nip46Session) {
         restoreNip46Session(nip46Session);
       }
