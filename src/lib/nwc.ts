@@ -59,7 +59,7 @@ function wsAttempt(
     }
 
     const timer = setTimeout(
-      () => settle({ ok: false, error: 'NWC payment timeout', delivered }),
+      () => settle({ ok: false, error: 'NWC timeout — payment may still be processing', delivered }),
       timeoutMs,
     );
 
@@ -122,7 +122,7 @@ export async function payInvoiceViaNwc(invoice: string, nwcString: string): Prom
   );
 
   // Primary attempt: send payment and wait for confirmation
-  const first = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, true, 30000);
+  const first = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, true, 12000);
   if (first.ok) return;
 
   // If the payment event reached the relay but the connection dropped (e.g. 502),
@@ -130,7 +130,7 @@ export async function payInvoiceViaNwc(invoice: string, nwcString: string): Prom
   const shouldPoll = first.delivered || first.error?.includes('502') || first.error?.includes('closed');
   if (shouldPoll) {
     await new Promise((r) => setTimeout(r, 2500));
-    const poll = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, false, 10000);
+    const poll = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, false, 6000);
     if (poll.ok) return;
   }
 

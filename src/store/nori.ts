@@ -37,11 +37,15 @@ interface NoriState {
   lastDecayTime: number;
   isListening: boolean;
   isSyncingFromNostr: boolean;
+  // Unix timestamp (seconds) — where the last listener session left off.
+  // Used as `since` for the next session to avoid re-processing old events.
+  lastListenerSince: number;
 
   // Actions
   triggerAction: (action: NoriAction, detail?: string, senderPubkey?: string) => void;
   decayStats: () => void;
   setListening: (listening: boolean) => void;
+  setLastListenerSince: (t: number) => void;
   computeMood: () => NoriMood;
   loadFromNostr: (pubkey: string) => Promise<void>;
 }
@@ -141,6 +145,7 @@ export const useNoriStore = create<NoriState>()(
       lastDecayTime: Date.now(),
       isListening: false,
       isSyncingFromNostr: false,
+      lastListenerSince: 0,
 
       triggerAction: (action, detail, senderPubkey) => {
         const state = get();
@@ -201,6 +206,7 @@ export const useNoriStore = create<NoriState>()(
       },
 
       setListening: (listening) => set({ isListening: listening }),
+      setLastListenerSince: (t) => set({ lastListenerSince: t }),
 
       computeMood: () => {
         const state = get();
@@ -262,6 +268,7 @@ export const useNoriStore = create<NoriState>()(
         activityLog: state.activityLog.slice(0, 20),
         lastEventTime: state.lastEventTime,
         lastDecayTime: state.lastDecayTime,
+        lastListenerSince: state.lastListenerSince,
       }),
     }
   )

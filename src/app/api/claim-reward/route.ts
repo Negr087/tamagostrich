@@ -25,7 +25,7 @@ async function fetchNostrEvent(filter: object): Promise<Record<string, unknown> 
 function fetchFromRelay(
   relayUrl: string,
   filter: object,
-  timeoutMs = 8000,
+  timeoutMs = 5000,
 ): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
     let ws: WebSocket;
@@ -97,13 +97,11 @@ export async function POST(req: NextRequest) {
   processing.add(lockKey);
 
   try {
-    // ── 1. Verify level via NIP-78 pet state on Nostr ────────────────
-    const petEvent = await fetchNostrEvent({
-      kinds: [30078],
-      authors: [pubkey],
-      '#d': ['tamagostrich-pet-state'],
-      limit: 1,
-    });
+    // ── 1 & 2. Fetch NIP-78 pet state + kind-0 profile in parallel ───
+    const [petEvent, profileEvent] = await Promise.all([
+      fetchNostrEvent({ kinds: [30078], authors: [pubkey], '#d': ['tamagostrich-pet-state'], limit: 1 }),
+      fetchNostrEvent({ kinds: [0], authors: [pubkey], limit: 1 }),
+    ]);
 
     if (!petEvent) {
       return NextResponse.json(
@@ -140,9 +138,6 @@ export async function POST(req: NextRequest) {
     if (alreadyClaimed.includes(milestone)) {
       return NextResponse.json({ error: 'You already claimed this reward' }, { status: 409 });
     }
-
-    // ── 2. Get user's lightning address from kind-0 profile ──────────
-    const profileEvent = await fetchNostrEvent({ kinds: [0], authors: [pubkey], limit: 1 });
 
     let lud16: string | undefined;
     if (profileEvent?.content) {

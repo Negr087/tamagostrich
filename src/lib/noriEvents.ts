@@ -24,6 +24,10 @@ export function startNoriListener(pubkey: string) {
   decayInterval = setInterval(() => {
     useNoriStore.getState().decayStats();
 
+    // Keep lastListenerSince current so next session won't re-process old events.
+    // Subtract 5 min as a buffer to avoid gaps at session boundaries.
+    useNoriStore.getState().setLastListenerSince(Math.floor(Date.now() / 1000) - 300);
+
     // Animación de sueño si lleva 5+ minutos sin actividad
     const s = useNoriStore.getState();
     const idleMin = (Date.now() - s.lastEventTime) / 60000;
@@ -58,11 +62,14 @@ export function startNoriListener(pubkey: string) {
 
     if (sessionId !== mySession) return;
 
-    // 24-hour lookback for interactions so events aren't missed if the app was closed.
-    // For kind:3 (followers) we use NO lookback — only events published after the listener
-    // started. Any relay replaying old contact-list updates would cause false "new follower"
-    // notifications for users who already follow and just updated their contact list.
-    const since = listenerStartTime - 86400; // 24 h
+    // Use the persisted timestamp from the last session so we only process NEW events.
+    // First ever open (lastListenerSince === 0): use a 2-hour lookback.
+    // Subsequent opens: start from where the last session left off (with a 5-min buffer).
+    const stored = useNoriStore.getState().lastListenerSince;
+    const since = stored > 0 ? stored : listenerStartTime - 7200;
+    // Save current time immediately so next session knows where to start from.
+    useNoriStore.getState().setLastListenerSince(listenerStartTime);
+
     const followerSince = listenerStartTime; // no lookback for follows
 
     subscription = ndk.subscribe(
@@ -141,6 +148,8 @@ export function startNoriListener(pubkey: string) {
 export function stopNoriListener() {
   sessionId++; // invalidate any pending async callbacks
   knownFollowers.clear();
+  // Save exact stop time so next session fetches only events after this point.
+  useNoriStore.getState().setLastListenerSince(Math.floor(Date.now() / 1000));
   listenerStartTime = 0;
 
   if (subscription) {
