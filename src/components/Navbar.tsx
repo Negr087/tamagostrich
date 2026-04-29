@@ -58,6 +58,13 @@ export default function Navbar() {
                     <circle cx="12" cy="12" r="2"/>
                   </svg>
                 )},
+                { id: 'ranking' as const, label: t.navRanking, icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b4f953" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="14" width="4" height="8"/>
+                    <rect x="9" y="9" width="4" height="13"/>
+                    <rect x="16" y="4" width="4" height="18"/>
+                  </svg>
+                )},
               ]).map(({ id, label, icon }) => (
                 <button
                   key={id}

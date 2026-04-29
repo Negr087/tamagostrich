@@ -13,11 +13,12 @@ import { useNoriStore } from '@/store/nori';
 import { fetchGLTF, GLB_PATHS } from '@/lib/petModels';
 
 // Lazy-load heavy sections — they only download when first visited
-const Profile = dynamic(() => import('@/components/Profile'), { ssr: false });
-const Badges  = dynamic(() => import('@/components/Badges'),  { ssr: false });
-const Goals   = dynamic(() => import('@/components/Goals'),   { ssr: false });
+const Profile     = dynamic(() => import('@/components/Profile'),     { ssr: false });
+const Badges      = dynamic(() => import('@/components/Badges'),      { ssr: false });
+const Goals       = dynamic(() => import('@/components/Goals'),       { ssr: false });
+const Leaderboard = dynamic(() => import('@/components/Leaderboard'), { ssr: false });
 
-const VALID_SECTIONS: Section[] = ['nori', 'profile', 'badges', 'goals'];
+const VALID_SECTIONS: Section[] = ['nori', 'profile', 'badges', 'goals', 'ranking'];
 
 export default function Home() {
   const { isConnected, profile } = useAuthStore();
@@ -70,6 +71,8 @@ export default function Home() {
         <Badges />
       ) : activeSection === 'goals' ? (
         <Goals />
+      ) : activeSection === 'ranking' ? (
+        <Leaderboard />
       ) : null}
     </main>
   );

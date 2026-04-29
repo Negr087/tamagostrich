@@ -37,6 +37,7 @@ interface NoriState {
   lastDecayTime: number;
   isListening: boolean;
   isSyncingFromNostr: boolean;
+  isDead: boolean;
   // Unix timestamp (seconds) — where the last listener session left off.
   // Used as `since` for the next session to avoid re-processing old events.
   lastListenerSince: number;
@@ -44,6 +45,7 @@ interface NoriState {
   // Actions
   triggerAction: (action: NoriAction, detail?: string, senderPubkey?: string) => void;
   decayStats: () => void;
+  revive: () => void;
   setListening: (listening: boolean) => void;
   setLastListenerSince: (t: number) => void;
   computeMood: () => NoriMood;
@@ -79,6 +81,7 @@ async function doPublish() {
   const app = useAppearanceStore.getState();
   await publishPetState({
     version: 1,
+    isDead: state.isDead,
     stats: state.stats,
     lastEventTime: state.lastEventTime,
     lastDecayTime: state.lastDecayTime,
@@ -183,10 +186,12 @@ export const useNoriStore = create<NoriState>()(
       lastDecayTime: Date.now(),
       isListening: false,
       isSyncingFromNostr: false,
+      isDead: false,
       lastListenerSince: 0,
 
       triggerAction: (action, detail, senderPubkey) => {
         const state = get();
+        if (state.isDead) return;
         const effects = ACTION_EFFECTS[action];
         const meta = ACTION_META[action];
 
@@ -221,6 +226,7 @@ export const useNoriStore = create<NoriState>()(
 
       decayStats: () => {
         const state = get();
+        if (state.isDead) return;
         const now = Date.now();
         const elapsed = now - state.lastDecayTime;
         if (elapsed < 60000) return; // mínimo 1 minuto entre llamadas
@@ -235,10 +241,23 @@ export const useNoriStore = create<NoriState>()(
           social:    clamp(state.stats.social    - minutes * RATE),
         };
 
+        const justDied = newStats.happiness <= 0 && newStats.energy <= 0 && newStats.social <= 0;
         set({
           stats: newStats,
           lastDecayTime: now,
+          isDead: justDied ? true : state.isDead,
           mood: computeMoodFromStats(newStats, state.lastEventTime),
+        });
+        scheduleSync();
+      },
+
+      revive: () => {
+        set({
+          isDead: false,
+          stats: { happiness: 50, energy: 50, social: 50 },
+          lastEventTime: Date.now(),
+          lastDecayTime: Date.now(),
+          mood: 'happy',
         });
         scheduleSync();
       },
@@ -284,6 +303,7 @@ export const useNoriStore = create<NoriState>()(
               lastDecayTime: remote.lastDecayTime,
               activityLog:   remote.activityLog as ActivityLogEntry[] || [],
               mood: computeMoodFromStats(remote.stats, remote.lastEventTime),
+              isDead: !!remote.isDead,
             });
             // Apply decay accumulated since last sync
             useNoriStore.getState().decayStats();
@@ -330,6 +350,7 @@ export const useNoriStore = create<NoriState>()(
         lastEventTime: state.lastEventTime,
         lastDecayTime: state.lastDecayTime,
         lastListenerSince: state.lastListenerSince,
+        isDead: state.isDead,
       }),
     }
   )

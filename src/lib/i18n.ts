@@ -101,6 +101,31 @@ export const T = {
     badgesSubtitle: 'Insignias Nostr otorgadas a tu perfil (NIP-58)',
     badgesNone: 'Sin insignias aún',
     badgesNoneDesc: 'Las insignias que recibas de la red Nostr aparecerán acá',
+
+    // Death & revival
+    petDeadTitle: '💀 Tu mascota murió',
+    petDeadDesc: 'Sus estadísticas llegaron a cero por falta de actividad en Nostr.',
+    petReviveBtn: 'Revivir por 21 sats ⚡',
+    petReviving: 'Procesando pago...',
+    petReviveSuccess: '¡Revivida! 🎉',
+    petReviveError: 'No se pudo procesar el pago. Intentá de nuevo.',
+    petReviveManualTitle: 'Pagá el invoice y confirmá',
+    petReviveManualBtn: 'Ya pagué ✓',
+    petReviveNoConfig: 'La resurrección no está configurada en este servidor.',
+    petReviveCopy: 'Copiar invoice',
+    petReviveCopied: '¡Copiado!',
+
+    // Leaderboard
+    navRanking: 'Ranking',
+    leaderboardTitle: 'Ranking',
+    leaderboardSubtitle: 'Los mejores Tamagostrich de Nostr',
+    leaderboardLevel: 'Nivel',
+    leaderboardStreak: 'Racha',
+    leaderboardEmpty: 'Sin datos aún. ¡Sé el primero en el ranking!',
+    leaderboardLoading: 'Cargando ranking...',
+    leaderboardError: 'No se pudo cargar el ranking.',
+    leaderboardUpdated: 'Actualizado hace',
+    leaderboardDays: (n: number) => `${n}d`,
   },
 
   en: {
@@ -202,6 +227,31 @@ export const T = {
     badgesSubtitle: 'Nostr badges awarded to your profile (NIP-58)',
     badgesNone: 'No badges yet',
     badgesNoneDesc: 'Badges you receive from the Nostr network will appear here',
+
+    // Death & revival
+    petDeadTitle: '💀 Your pet died',
+    petDeadDesc: 'Its stats reached zero from lack of Nostr activity.',
+    petReviveBtn: 'Revive for 21 sats ⚡',
+    petReviving: 'Processing payment...',
+    petReviveSuccess: 'Revived! 🎉',
+    petReviveError: 'Could not process payment. Please try again.',
+    petReviveManualTitle: 'Pay the invoice and confirm',
+    petReviveManualBtn: 'I paid ✓',
+    petReviveNoConfig: 'Revival is not configured on this server.',
+    petReviveCopy: 'Copy invoice',
+    petReviveCopied: 'Copied!',
+
+    // Leaderboard
+    navRanking: 'Ranking',
+    leaderboardTitle: 'Ranking',
+    leaderboardSubtitle: 'Top Tamagostrich on Nostr',
+    leaderboardLevel: 'Level',
+    leaderboardStreak: 'Streak',
+    leaderboardEmpty: 'No data yet. Be the first on the leaderboard!',
+    leaderboardLoading: 'Loading ranking...',
+    leaderboardError: 'Could not load ranking.',
+    leaderboardUpdated: 'Updated',
+    leaderboardDays: (n: number) => `${n}d ago`,
   },
 };
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { nip19 } from 'nostr-tools';
 import { useAuthStore } from '@/store/auth';
-import { useNoriStore, NoriAction, NoriMood } from '@/store/nori';
+import { useNoriStore, NoriAction, NoriMood, flushSync } from '@/store/nori';
 import { useGoalsStore, ACHIEVEMENTS } from '@/store/goals';
 import { useAppearanceStore, PALETTE } from '@/store/appearance';
 import { buildAnimal, animatePet, makePetMats, preloadGLBs, PetParts, PetMats, PetAnim, ANIMAL_META } from '@/lib/petModels';
@@ -163,7 +163,7 @@ function useIdleTime(lastEventTime: number) {
 
 export default function NoriTamagotchi() {
   const { isConnected, profile } = useAuthStore();
-  const { stats, mood, activityLog, isListening, lastEventTime } = useNoriStore();
+  const { stats, mood, activityLog, isListening, lastEventTime, isDead, revive } = useNoriStore();
   const { level, justLeveledUp, recentUnlocks, clearNotifications } = useGoalsStore();
   const { bodyColor, animalType, setBodyColor } = useAppearanceStore();
   const { t, lang } = useLang();
@@ -188,6 +188,12 @@ export default function NoriTamagotchi() {
   const [animKey, setAnimKey]               = useState(0);
   const [paletteOpen, setPaletteOpen]       = useState(false);
   const [selectorOpen, setSelectorOpen]     = useState(false);
+
+  // Revival payment state
+  const [reviving, setReviving]         = useState(false);
+  const [reviveError, setReviveError]   = useState('');
+  const [reviveInvoice, setReviveInvoice] = useState('');
+  const [copied, setCopied]             = useState(false);
   const idleTime = useIdleTime(lastEventTime);
   const fetchingSet = useRef<Set<string>>(new Set());
 
@@ -498,6 +504,48 @@ export default function NoriTamagotchi() {
     };
   }, [isConnected, profile, animalType]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function handleRevive() {
+    setReviving(true);
+    setReviveError('');
+    setReviveInvoice('');
+    try {
+      const res = await fetch('/api/revive-pet');
+      const data = await res.json() as { invoice?: string; error?: string };
+      if (!res.ok || !data.invoice) {
+        setReviveError(data.error ?? t.petReviveError);
+        return;
+      }
+      const invoice = data.invoice;
+
+      if (typeof window !== 'undefined' && (window as unknown as { webln?: { enable: () => Promise<void>; sendPayment: (i: string) => Promise<unknown> } }).webln) {
+        const webln = (window as unknown as { webln: { enable: () => Promise<void>; sendPayment: (i: string) => Promise<unknown> } }).webln;
+        await webln.enable();
+        await webln.sendPayment(invoice);
+        revive();
+        await flushSync();
+      } else {
+        setReviveInvoice(invoice);
+      }
+    } catch (e: unknown) {
+      setReviveError(e instanceof Error ? e.message : t.petReviveError);
+    } finally {
+      setReviving(false);
+    }
+  }
+
+  function handleManualConfirm() {
+    revive();
+    flushSync();
+    setReviveInvoice('');
+  }
+
+  async function handleCopyInvoice() {
+    if (!reviveInvoice) return;
+    await navigator.clipboard.writeText(reviveInvoice);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   if (!isConnected || !profile) return null;
 
   return (
@@ -614,6 +662,56 @@ export default function NoriTamagotchi() {
             {/* Vignette */}
             <div className="absolute inset-0 pointer-events-none"
               style={{ background: 'radial-gradient(ellipse at center,transparent 55%,rgba(10,10,10,0.5) 100%)', zIndex: 15 }} />
+
+            {/* Death overlay */}
+            {isDead && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center"
+                style={{ background: 'rgba(5,5,10,0.88)', zIndex: 30, backdropFilter: 'blur(4px)' }}>
+                <div className="text-6xl animate-bounce">💀</div>
+                <div>
+                  <div className="text-xl font-extrabold text-lc-white mb-1">{t.petDeadTitle}</div>
+                  <div className="text-sm text-lc-muted max-w-xs">{t.petDeadDesc}</div>
+                </div>
+
+                {!reviveInvoice ? (
+                  <>
+                    <button
+                      onClick={handleRevive}
+                      disabled={reviving}
+                      className="lc-pill-primary px-6 py-3 text-sm font-bold tracking-wide disabled:opacity-50"
+                      style={{ background: 'linear-gradient(90deg,#f97316,#ef4444)', color: '#fff' }}
+                    >
+                      {reviving ? t.petReviving : t.petReviveBtn}
+                    </button>
+                    {reviveError && (
+                      <p className="text-xs text-red-400 max-w-xs">{reviveError}</p>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 w-full max-w-xs">
+                    <div className="text-sm font-semibold text-lc-white">{t.petReviveManualTitle}</div>
+                    <div className="w-full bg-lc-dark border border-lc-border rounded-xl px-3 py-2 font-mono text-[10px] text-lc-muted break-all select-all">
+                      {reviveInvoice.slice(0, 60)}…
+                    </div>
+                    <div className="flex gap-2 w-full">
+                      <button
+                        onClick={handleCopyInvoice}
+                        className="flex-1 py-2 text-xs font-bold rounded-xl border border-lc-border text-lc-white hover:bg-lc-border/40 transition"
+                      >
+                        {copied ? t.petReviveCopied : t.petReviveCopy}
+                      </button>
+                      <button
+                        onClick={handleManualConfirm}
+                        className="flex-1 py-2 text-xs font-bold rounded-xl text-lc-black"
+                        style={{ background: 'linear-gradient(90deg,#b4f953,#84cc16)' }}
+                      >
+                        {t.petReviveManualBtn}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Event chips */}

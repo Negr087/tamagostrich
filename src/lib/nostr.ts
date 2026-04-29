@@ -445,6 +445,7 @@ export async function fetchUserNotes(pubkey: string, limit = 50): Promise<NDKEve
 
 export interface PetStatePayload {
   version: 1;
+  isDead?: boolean;
   stats: { happiness: number; energy: number; social: number };
   lastEventTime: number;
   lastDecayTime: number;
