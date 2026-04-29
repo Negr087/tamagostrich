@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import * as THREE from 'three';
 import { nip19 } from 'nostr-tools';
 import { useAuthStore } from '@/store/auth';
@@ -193,10 +194,13 @@ export default function NoriTamagotchi() {
   const [showShare, setShowShare]       = useState(false);
 
   // Revival payment state
-  const [reviving, setReviving]         = useState(false);
-  const [reviveError, setReviveError]   = useState('');
+  const [reviving, setReviving]           = useState(false);
+  const [reviveError, setReviveError]     = useState('');
   const [reviveInvoice, setReviveInvoice] = useState('');
-  const [copied, setCopied]             = useState(false);
+  const [paymentHash, setPaymentHash]     = useState('');
+  const [paymentReceived, setPaymentReceived] = useState(false);
+  const [copied, setCopied]               = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const idleTime = useIdleTime(lastEventTime);
   const fetchingSet = useRef<Set<string>>(new Set());
 
@@ -507,13 +511,46 @@ export default function NoriTamagotchi() {
     };
   }, [isConnected, profile, animalType]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll payment status while invoice is displayed
+  const doRevive = useCallback(() => {
+    revive();
+    flushSync();
+    setReviveInvoice('');
+    setPaymentHash('');
+    setPaymentReceived(false);
+  }, [revive]);
+
+  useEffect(() => {
+    if (!paymentHash || paymentReceived) return;
+
+    const check = async () => {
+      try {
+        const res = await fetch(`/api/revive-pet/status?hash=${paymentHash}`);
+        const data = await res.json() as { paid?: boolean };
+        if (data.paid) {
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          setPaymentReceived(true);
+          setTimeout(() => doRevive(), 2500);
+        }
+      } catch { /* retry next tick */ }
+    };
+
+    check();
+    pollRef.current = setInterval(check, 3000);
+    return () => {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    };
+  }, [paymentHash, paymentReceived, doRevive]);
+
   async function handleRevive() {
     setReviving(true);
     setReviveError('');
     setReviveInvoice('');
+    setPaymentHash('');
+    setPaymentReceived(false);
     try {
       const res = await fetch('/api/revive-pet');
-      const data = await res.json() as { invoice?: string; error?: string };
+      const data = await res.json() as { invoice?: string; paymentHash?: string; error?: string };
       if (!res.ok || !data.invoice) {
         setReviveError(data.error ?? t.petReviveError);
         return;
@@ -528,18 +565,13 @@ export default function NoriTamagotchi() {
         await flushSync();
       } else {
         setReviveInvoice(invoice);
+        setPaymentHash(data.paymentHash ?? '');
       }
     } catch (e: unknown) {
       setReviveError(e instanceof Error ? e.message : t.petReviveError);
     } finally {
       setReviving(false);
     }
-  }
-
-  function handleManualConfirm() {
-    revive();
-    flushSync();
-    setReviveInvoice('');
   }
 
   async function handleCopyInvoice() {
@@ -711,27 +743,27 @@ export default function NoriTamagotchi() {
                       <p className="text-xs text-red-400 max-w-xs">{reviveError}</p>
                     )}
                   </>
+                ) : paymentReceived ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="text-5xl">⚡</div>
+                    <p className="font-extrabold text-lg" style={{ color: '#b4f953' }}>{t.petRevivePaid}</p>
+                    <p className="text-xs text-lc-muted">{t.petRevivePaidSub}</p>
+                  </div>
                 ) : (
-                  <div className="flex flex-col items-center gap-3 w-full max-w-xs">
+                  <div className="flex flex-col items-center gap-3 w-full max-w-[260px]">
                     <div className="text-sm font-semibold text-lc-white">{t.petReviveManualTitle}</div>
-                    <div className="w-full bg-lc-dark border border-lc-border rounded-xl px-3 py-2 font-mono text-[10px] text-lc-muted break-all select-all">
-                      {reviveInvoice.slice(0, 60)}…
+                    {/* QR code */}
+                    <div className="bg-white p-3 rounded-2xl">
+                      <QRCodeSVG value={reviveInvoice.toUpperCase()} size={180} />
                     </div>
-                    <div className="flex gap-2 w-full">
-                      <button
-                        onClick={handleCopyInvoice}
-                        className="flex-1 py-2 text-xs font-bold rounded-xl border border-lc-border text-lc-white hover:bg-lc-border/40 transition"
-                      >
-                        {copied ? t.petReviveCopied : t.petReviveCopy}
-                      </button>
-                      <button
-                        onClick={handleManualConfirm}
-                        className="flex-1 py-2 text-xs font-bold rounded-xl text-lc-black"
-                        style={{ background: 'linear-gradient(90deg,#b4f953,#84cc16)' }}
-                      >
-                        {t.petReviveManualBtn}
-                      </button>
-                    </div>
+                    {/* Copy button */}
+                    <button
+                      onClick={handleCopyInvoice}
+                      className="w-full py-2.5 text-xs font-bold rounded-xl border border-lc-border text-lc-white hover:bg-lc-border/40 transition"
+                    >
+                      {copied ? t.petReviveCopied : t.petReviveCopy}
+                    </button>
+                    <p className="text-[10px] text-lc-muted animate-pulse">Esperando pago...</p>
                   </div>
                 )}
               </div>

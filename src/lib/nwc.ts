@@ -141,6 +141,97 @@ function wsAttempt(
   });
 }
 
+// General-purpose NWC command sender — used for make_invoice and lookup_invoice.
+async function sendNwcCommand(
+  method: string,
+  params: Record<string, unknown>,
+  nwcString: string,
+  timeoutMs = 12000,
+): Promise<Record<string, unknown>> {
+  const { walletPubkey, relayUrl, secret } = parseNwcString(nwcString);
+  const secretBytes = hexToBytes(secret);
+
+  const encrypted = await nip04.encrypt(
+    secret, walletPubkey,
+    JSON.stringify({ method, params }),
+  );
+  const reqEvent = finalizeEvent(
+    { kind: 23194, created_at: Math.floor(Date.now() / 1000), tags: [['p', walletPubkey]], content: encrypted },
+    secretBytes,
+  );
+
+  return new Promise((resolve, reject) => {
+    let ws: WebSocket;
+    try { ws = new WebSocket(relayUrl); } catch (e) { reject(e); return; }
+
+    let settled = false;
+    const done = (result: Record<string, unknown> | null, err?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws.terminate(); } catch {}
+      err ? reject(new Error(err)) : resolve(result!);
+    };
+
+    const timer = setTimeout(() => done(null, 'NWC timeout'), timeoutMs);
+
+    ws.on('open', () => {
+      const since = reqEvent.created_at - 1;
+      ws.send(JSON.stringify(['REQ', 'nwc-r', { kinds: [23195], '#e': [reqEvent.id], authors: [walletPubkey], limit: 1 }]));
+      ws.send(JSON.stringify(['REQ', 'nwc-r2', { kinds: [23195], authors: [walletPubkey], since, limit: 5 }]));
+      ws.send(JSON.stringify(['EVENT', reqEvent]));
+    });
+
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data.toString()) as unknown[];
+        if (msg[0] !== 'EVENT' || (msg[2] as Record<string, unknown>)?.kind !== 23195) return;
+        const ev = msg[2] as Record<string, unknown>;
+        const decrypted = await nip04.decrypt(secret, walletPubkey, ev.content as string);
+        const response = JSON.parse(decrypted) as {
+          result?: Record<string, unknown>;
+          error?: { message?: string };
+        };
+        if (response.error) done(null, response.error.message ?? 'NWC wallet error');
+        else done(response.result ?? {});
+      } catch (e) {
+        done(null, e instanceof Error ? e.message : String(e));
+      }
+    });
+
+    ws.on('error', (err) => done(null, err.message));
+    ws.on('close', () => done(null, 'NWC relay connection closed'));
+  });
+}
+
+export async function makeInvoiceViaNwc(
+  amountSats: number,
+  description: string,
+  nwcString: string,
+): Promise<{ invoice: string; paymentHash: string }> {
+  const result = await sendNwcCommand(
+    'make_invoice',
+    { amount: amountSats * 1000, description, expiry: 3600 },
+    nwcString,
+  );
+  const invoice = result.invoice as string;
+  const paymentHash = result.payment_hash as string;
+  if (!invoice || !paymentHash) throw new Error('Wallet returned invalid make_invoice response');
+  return { invoice, paymentHash };
+}
+
+export async function lookupInvoiceViaNwc(
+  paymentHash: string,
+  nwcString: string,
+): Promise<{ paid: boolean }> {
+  try {
+    const result = await sendNwcCommand('lookup_invoice', { payment_hash: paymentHash }, nwcString, 8000);
+    return { paid: !!(result.settled_at || result.preimage) };
+  } catch {
+    return { paid: false };
+  }
+}
+
 export async function payInvoiceViaNwc(invoice: string, nwcString: string): Promise<void> {
   const { walletPubkey, relayUrl, secret } = parseNwcString(nwcString);
   const secretBytes = hexToBytes(secret);
