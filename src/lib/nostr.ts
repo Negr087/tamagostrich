@@ -517,6 +517,45 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
   }
 }
 
+// Publish any event, handling both direct signers (NIP-07/nsec) and NIP-46 remote signers (Amber).
+// Throws if no signer is available.
+export async function publishEvent(params: {
+  kind: number;
+  content: string;
+  tags?: string[][];
+}): Promise<void> {
+  const ndk = getNDK();
+
+  if (ndk.signer) {
+    const event = new NDKEvent(ndk);
+    event.kind = params.kind;
+    event.content = params.content;
+    event.tags = params.tags || [];
+    await event.publish();
+    return;
+  }
+
+  if (nip46Session) {
+    const { useAuthStore } = await import('@/store/auth');
+    const pubkey = useAuthStore.getState().profile?.pubkey;
+    if (!pubkey) throw new Error('No pubkey available');
+    const signed = await signEventViaNip46({
+      kind: params.kind,
+      pubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: params.tags || [],
+      content: params.content,
+    } as UnsignedEvent);
+    if (!signed) throw new Error('NIP-46 signing timed out or rejected');
+    const pool = new SimplePool();
+    await Promise.allSettled(pool.publish(POPULAR_RELAYS, signed));
+    pool.close(POPULAR_RELAYS);
+    return;
+  }
+
+  throw new Error('No signer available');
+}
+
 export interface FetchedPetState extends PetStatePayload {
   nostrCreatedAt: number; // unix seconds — the Nostr event's own created_at, NOT part of the payload content
 }

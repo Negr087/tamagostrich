@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { NDKEvent } from '@nostr-dev-kit/ndk';
-import { getNDK } from '@/lib/nostr';
+import { publishEvent } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
 import { ANIMAL_META } from '@/lib/petModels';
 import type { AnimalType } from '@/lib/petModels';
@@ -60,12 +59,11 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
     setStatus('loading');
     setErrorMsg('');
     try {
-      const ndk = getNDK();
-      const event = new NDKEvent(ndk);
-      event.kind = 1;
-      event.content = draft;
-      event.tags = [['t', 'tamagostrich'], ['t', 'nostr']];
-      await event.publish();
+      await publishEvent({
+        kind: 1,
+        content: draft,
+        tags: [['t', 'tamagostrich'], ['t', 'nostr']],
+      });
       setStatus('success');
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : t.shareError);
