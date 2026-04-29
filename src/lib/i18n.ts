@@ -102,6 +102,16 @@ export const T = {
     badgesNone: 'Sin insignias aún',
     badgesNoneDesc: 'Las insignias que recibas de la red Nostr aparecerán acá',
 
+    // Share
+    shareBtn: 'Compartir en Nostr',
+    shareModalTitle: 'Compartir tu progreso',
+    shareModalSubtitle: 'Se va a publicar esta nota en tu perfil Nostr',
+    sharePublish: 'Publicar',
+    sharePublishing: 'Publicando...',
+    shareSuccess: '¡Publicado! Tu progreso está en Nostr 🎉',
+    shareError: 'No se pudo publicar. ¿Tenés signer activo?',
+    shareEditPlaceholder: 'Editá tu mensaje antes de publicar...',
+
     // Death & revival
     petDeadTitle: '💀 Tu mascota murió',
     petDeadDesc: 'Sus estadísticas llegaron a cero por falta de actividad en Nostr.',
@@ -227,6 +237,16 @@ export const T = {
     badgesSubtitle: 'Nostr badges awarded to your profile (NIP-58)',
     badgesNone: 'No badges yet',
     badgesNoneDesc: 'Badges you receive from the Nostr network will appear here',
+
+    // Share
+    shareBtn: 'Share on Nostr',
+    shareModalTitle: 'Share your progress',
+    shareModalSubtitle: 'This note will be published to your Nostr profile',
+    sharePublish: 'Publish',
+    sharePublishing: 'Publishing...',
+    shareSuccess: 'Published! Your progress is on Nostr 🎉',
+    shareError: 'Could not publish. Is your signer active?',
+    shareEditPlaceholder: 'Edit your message before publishing...',
 
     // Death & revival
     petDeadTitle: '💀 Your pet died',

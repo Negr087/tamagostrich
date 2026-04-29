@@ -5,13 +5,17 @@ import { useGoalsStore, ACHIEVEMENTS, levelProgress, MAX_LEVEL } from '@/store/g
 import { useAuthStore } from '@/store/auth';
 import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
 import { useLang } from '@/lib/i18n';
-import { flushSync, waitForSyncComplete } from '@/store/nori';
+import { flushSync, waitForSyncComplete, useNoriStore } from '@/store/nori';
+import { useAppearanceStore } from '@/store/appearance';
+import ShareModal from './ShareModal';
 
 type ClaimState = 'idle' | 'loading' | 'success' | 'error' | 'no_lud16';
 
 export default function Goals() {
   const { xp, level, unlockedAchievements, streakDays, claimedRewards, markRewardClaimed } = useGoalsStore();
   const { profile } = useAuthStore();
+  const { stats } = useNoriStore();
+  const { animalType } = useAppearanceStore();
   const { t, lang } = useLang();
   const { current, needed, pct } = levelProgress(xp, level);
   const isMaxLevel = level >= MAX_LEVEL;
@@ -19,6 +23,7 @@ export default function Goals() {
 
   const [claimStates, setClaimStates] = useState<Record<string, ClaimState>>({});
   const [errorMsgs, setErrorMsgs] = useState<Record<string, string>>({});
+  const [showShare, setShowShare] = useState(false);
 
   async function handleClaim(milestoneId: string) {
     if (!profile?.pubkey) return;
@@ -113,6 +118,18 @@ export default function Goals() {
                 </div>
               </div>
             </div>
+            <button
+              onClick={() => setShowShare(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-80"
+              style={{ background: 'rgba(180,249,83,0.12)', color: '#b4f953', border: '1px solid rgba(180,249,83,0.25)' }}
+              title={t.shareBtn}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              </svg>
+              <span className="hidden sm:inline">{t.shareBtn}</span>
+            </button>
           </div>
 
           {/* XP bar */}
@@ -257,6 +274,17 @@ export default function Goals() {
         </div>
 
       </div>
+
+      <ShareModal
+        isOpen={showShare}
+        onClose={() => setShowShare(false)}
+        level={level}
+        streakDays={streakDays}
+        happiness={stats.happiness}
+        energy={stats.energy}
+        social={stats.social}
+        animalType={animalType}
+      />
     </div>
   );
 }

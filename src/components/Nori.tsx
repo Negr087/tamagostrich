@@ -12,6 +12,7 @@ import { startNoriListener, stopNoriListener } from '@/lib/noriEvents';
 import { getNDK } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
 import PetSelector from './PetSelector';
+import ShareModal from './ShareModal';
 
 // ─── TYPES ───────────────────────────────────────────────────────────
 
@@ -164,7 +165,7 @@ function useIdleTime(lastEventTime: number) {
 export default function NoriTamagotchi() {
   const { isConnected, profile } = useAuthStore();
   const { stats, mood, activityLog, isListening, lastEventTime, isDead, revive } = useNoriStore();
-  const { level, justLeveledUp, recentUnlocks, clearNotifications } = useGoalsStore();
+  const { level, streakDays, justLeveledUp, recentUnlocks, clearNotifications } = useGoalsStore();
   const { bodyColor, animalType, setBodyColor } = useAppearanceStore();
   const { t, lang } = useLang();
 
@@ -188,6 +189,8 @@ export default function NoriTamagotchi() {
   const [animKey, setAnimKey]               = useState(0);
   const [paletteOpen, setPaletteOpen]       = useState(false);
   const [selectorOpen, setSelectorOpen]     = useState(false);
+
+  const [showShare, setShowShare]       = useState(false);
 
   // Revival payment state
   const [reviving, setReviving]         = useState(false);
@@ -553,6 +556,17 @@ export default function NoriTamagotchi() {
       {/* Pet Selector modal (in-app) */}
       {selectorOpen && <PetSelector onClose={() => setSelectorOpen(false)} />}
 
+      <ShareModal
+        isOpen={showShare}
+        onClose={() => setShowShare(false)}
+        level={level}
+        streakDays={streakDays}
+        happiness={stats.happiness}
+        energy={stats.energy}
+        social={stats.social}
+        animalType={animalType}
+      />
+
       <div className="min-h-screen pt-20 pb-8">
         <div className="max-w-3xl mx-auto px-4">
 
@@ -624,6 +638,16 @@ export default function NoriTamagotchi() {
                 title={lang === 'es' ? 'Cambiar mascota' : 'Change pet'}
               >
                 🐾
+              </button>
+
+              {/* Share */}
+              <button
+                onClick={() => setShowShare(true)}
+                className="w-7 h-7 rounded-full border border-lc-border/60 flex items-center justify-center text-sm transition-transform duration-150 hover:scale-110 active:scale-95"
+                style={{ background: 'rgba(10,10,10,0.8)' }}
+                title={t.shareBtn}
+              >
+                🔗
               </button>
 
               {/* Color picker */}
