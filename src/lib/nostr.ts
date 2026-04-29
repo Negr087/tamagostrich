@@ -517,7 +517,11 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
   }
 }
 
-export async function fetchPetState(pubkey: string): Promise<PetStatePayload | null> {
+export interface FetchedPetState extends PetStatePayload {
+  nostrCreatedAt: number; // unix seconds — the Nostr event's own created_at, NOT part of the payload content
+}
+
+export async function fetchPetState(pubkey: string): Promise<FetchedPetState | null> {
   const ndk = getNDK();
   try {
     const events = await withTimeout(
@@ -528,7 +532,7 @@ export async function fetchPetState(pubkey: string): Promise<PetStatePayload | n
     if (!event) return null;
     const payload = JSON.parse(event.content) as PetStatePayload;
     if (payload?.version !== 1) return null;
-    return payload;
+    return { ...payload, nostrCreatedAt: event.created_at || 0 };
   } catch {
     return null;
   }

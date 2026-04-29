@@ -41,6 +41,9 @@ interface NoriState {
   // Unix timestamp (seconds) — where the last listener session left off.
   // Used as `since` for the next session to avoid re-processing old events.
   lastListenerSince: number;
+  // Unix timestamp (seconds) of the last successful publish to Nostr.
+  // Used to compare against the remote event's created_at to decide which state is newer.
+  lastNostrPublish: number;
 
   // Actions
   triggerAction: (action: NoriAction, detail?: string, senderPubkey?: string) => void;
@@ -61,9 +64,10 @@ function clamp(val: number, min = 0, max = 100) {
 // which would overwrite a more-advanced state from another device.
 let hasLoadedFromNostr = false;
 
-// NIP-46 (Amber) users: only publish once per session to avoid repeated signing prompts.
-// Background syncs are skipped after the first successful publish.
-let nip46SyncDone = false;
+// NIP-46 (Amber) users: rate-limit publishes to avoid repeated signing prompts.
+// Allow at most one publish per NIP46_MIN_INTERVAL seconds.
+const NIP46_MIN_INTERVAL = 600; // 10 minutes
+let nip46LastPublish = 0; // unix seconds of last NIP-46 publish this session
 
 // Debounced publish — fires 10s after the last stats change
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -74,7 +78,8 @@ async function doPublish() {
   const { publishPetState, getNDK, getNip46Session } = await import('@/lib/nostr');
 
   const isNip46 = !getNDK().signer && !!getNip46Session();
-  if (isNip46 && nip46SyncDone) return;
+  const nowSecs = Math.floor(Date.now() / 1000);
+  if (isNip46 && nip46LastPublish > 0 && nowSecs - nip46LastPublish < NIP46_MIN_INTERVAL) return;
 
   const { useAppearanceStore } = await import('@/store/appearance');
   const goals = useGoalsStore.getState();
@@ -101,7 +106,10 @@ async function doPublish() {
       hasChosen: app.hasChosen,
     },
   });
-  if (isNip46) nip46SyncDone = true;
+  // Record publish time so other devices know who published last
+  const publishedAt = Math.floor(Date.now() / 1000);
+  useNoriStore.setState({ lastNostrPublish: publishedAt });
+  if (isNip46) nip46LastPublish = publishedAt;
 }
 
 function scheduleSync() {
@@ -118,7 +126,7 @@ export function flushSync(): Promise<void> {
     clearTimeout(syncTimer);
     syncTimer = null;
   }
-  nip46SyncDone = false; // allow one final publish on logout
+  nip46LastPublish = 0; // allow one final publish regardless of rate limit (e.g. on logout)
   return doPublish().catch(() => {});
 }
 
@@ -188,6 +196,7 @@ export const useNoriStore = create<NoriState>()(
       isSyncingFromNostr: false,
       isDead: false,
       lastListenerSince: 0,
+      lastNostrPublish: 0,
 
       triggerAction: (action, detail, senderPubkey) => {
         const state = get();
@@ -273,7 +282,7 @@ export const useNoriStore = create<NoriState>()(
       loadFromNostr: async (pubkey: string) => {
         // Reset sync flags so each login session gets a fresh publish cycle
         hasLoadedFromNostr = false;
-        nip46SyncDone = false;
+        nip46LastPublish = 0;
         set({ isSyncingFromNostr: true });
         try {
           const { fetchPetState, connectNDK } = await import('@/lib/nostr');
@@ -285,14 +294,18 @@ export const useNoriStore = create<NoriState>()(
             return;
           }
 
-          const local = get();
-          // Use remote if: this browser never had activity (fresh/default state),
-          // OR remote has more recent activity/decay than local
-          const localIsDefault = local.activityLog.length === 0;
-          const remoteIsNewer  = remote.lastEventTime > local.lastEventTime
-                              || remote.lastDecayTime > local.lastDecayTime;
+          // Compare using Nostr event timestamps — the true ground truth of "who published last".
+          // remote.nostrCreatedAt = unix seconds when the remote event was signed & published.
+          // lastNostrPublish = unix seconds when THIS device last published to Nostr (0 if never).
+          // If this device never published, or the remote event is newer, adopt the remote state.
+          const lastPublish = get().lastNostrPublish;
+          const remoteIsNewer = remote.nostrCreatedAt > lastPublish;
 
-          if (localIsDefault || remoteIsNewer) {
+          console.log('[pet-sync] remote createdAt:', remote.nostrCreatedAt,
+            '| local lastNostrPublish:', lastPublish,
+            '| remoteIsNewer:', remoteIsNewer);
+
+          if (remoteIsNewer) {
             set({
               stats: {
                 happiness: clamp(remote.stats.happiness),
@@ -308,7 +321,7 @@ export const useNoriStore = create<NoriState>()(
             // Apply decay accumulated since last sync
             useNoriStore.getState().decayStats();
           } else {
-            // Local is more recent — publish it so other devices can sync
+            // This device published more recently — push local state so other devices can sync
             scheduleSync();
           }
           // Always merge goals — take the best of both devices regardless of which is newer
@@ -320,8 +333,8 @@ export const useNoriStore = create<NoriState>()(
           } else {
             console.warn('[pet-sync] remote event has no goals field');
           }
-          // Sync appearance (animal type + color) when remote state is adopted
-          if (remote.appearance && (localIsDefault || remoteIsNewer)) {
+          // Sync appearance when remote state is adopted
+          if (remote.appearance && remoteIsNewer) {
             const { useAppearanceStore } = await import('@/store/appearance');
             const { ANIMAL_META } = await import('@/lib/petModels');
             const app = useAppearanceStore.getState();
@@ -351,6 +364,7 @@ export const useNoriStore = create<NoriState>()(
         lastDecayTime: state.lastDecayTime,
         lastListenerSince: state.lastListenerSince,
         isDead: state.isDead,
+        lastNostrPublish: state.lastNostrPublish,
       }),
     }
   )
