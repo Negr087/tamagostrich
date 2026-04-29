@@ -11,7 +11,7 @@ type ClaimState = 'idle' | 'loading' | 'success' | 'error' | 'no_lud16';
 
 export default function Goals() {
   const { xp, level, unlockedAchievements, streakDays, claimedRewards, markRewardClaimed } = useGoalsStore();
-  const { user } = useAuthStore();
+  const { profile } = useAuthStore();
   const { t, lang } = useLang();
   const { current, needed, pct } = levelProgress(xp, level);
   const isMaxLevel = level >= MAX_LEVEL;
@@ -21,20 +21,20 @@ export default function Goals() {
   const [errorMsgs, setErrorMsgs] = useState<Record<string, string>>({});
 
   async function handleClaim(milestoneId: string) {
-    if (!user?.pubkey) return;
+    if (!profile?.pubkey) return;
     setClaimStates(s => ({ ...s, [milestoneId]: 'loading' }));
     setErrorMsgs(s => ({ ...s, [milestoneId]: '' }));
 
     // Publish latest goals state to Nostr first so the server can verify it.
-    // Then wait 1.5 s for the event to propagate to relay indexes.
+    // Then wait 3 s for the event to propagate to relay indexes.
     await flushSync();
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 3000));
 
     try {
       const res = await fetch('/api/claim-reward', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pubkey: user.pubkey, milestone: milestoneId }),
+        body: JSON.stringify({ pubkey: profile.pubkey, milestone: milestoneId }),
       });
       const data = await res.json();
 

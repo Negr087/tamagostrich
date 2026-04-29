@@ -28,7 +28,7 @@ async function fetchNostrEvent(filter: object): Promise<Record<string, unknown> 
 function fetchFromRelay(
   relayUrl: string,
   filter: object,
-  timeoutMs = 3000,
+  timeoutMs = 5000,
 ): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
     let ws: WebSocket;

@@ -453,6 +453,7 @@ export interface PetStatePayload {
     timestamp: number;
     action: string;
     message: string;
+    detail?: string;
     emoji: string;
     senderPubkey?: string;
   }>;
