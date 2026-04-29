@@ -5,7 +5,7 @@ import { useGoalsStore, ACHIEVEMENTS, levelProgress, MAX_LEVEL } from '@/store/g
 import { useAuthStore } from '@/store/auth';
 import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
 import { useLang } from '@/lib/i18n';
-import { flushSync } from '@/store/nori';
+import { flushSync, waitForSyncComplete } from '@/store/nori';
 
 type ClaimState = 'idle' | 'loading' | 'success' | 'error' | 'no_lud16';
 
@@ -25,18 +25,34 @@ export default function Goals() {
     setClaimStates(s => ({ ...s, [milestoneId]: 'loading' }));
     setErrorMsgs(s => ({ ...s, [milestoneId]: '' }));
 
-    // Publish latest goals state to Nostr first so the server can verify it.
-    // Then wait 3 s for the event to propagate to relay indexes.
+    // Wait for any in-progress Nostr sync before publishing, so we send the
+    // merged state (not stale local state from before the relay fetch completes).
+    await waitForSyncComplete();
     await flushSync();
-    await new Promise(r => setTimeout(r, 3000));
 
-    try {
+    const doAttempt = async () => {
       const res = await fetch('/api/claim-reward', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pubkey: profile.pubkey, milestone: milestoneId }),
       });
-      const data = await res.json();
+      const data = await res.json() as { error?: string; success?: boolean };
+      return { res, data };
+    };
+
+    try {
+      // First attempt after 3 s propagation wait
+      await new Promise(r => setTimeout(r, 3000));
+      let { res, data } = await doAttempt();
+
+      // If the relay returned stale data (streak/level too low), retry once after 5 more s
+      const isStale = !res.ok && res.status === 403 &&
+        (data.error?.includes('streak') || data.error?.includes('level')) &&
+        !data.error?.includes('already');
+      if (isStale) {
+        await new Promise(r => setTimeout(r, 5000));
+        ({ res, data } = await doAttempt());
+      }
 
       if (!res.ok) {
         const isNoLud16 = res.status === 400 && data.error?.includes('lightning address');
@@ -46,7 +62,7 @@ export default function Goals() {
       }
 
       markRewardClaimed(milestoneId);
-      await flushSync(); // wait for NIP-78 with claimedRewards to land on Nostr
+      await flushSync(); // update claimedRewards on Nostr
       setClaimStates(s => ({ ...s, [milestoneId]: 'success' }));
     } catch {
       setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));

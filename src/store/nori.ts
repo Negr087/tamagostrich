@@ -119,6 +119,22 @@ export function flushSync(): Promise<void> {
   return doPublish().catch(() => {});
 }
 
+// Wait until any in-progress loadFromNostr has completed (up to timeoutMs).
+// Call this before flushSync() to ensure the merged state is published, not stale local state.
+export function waitForSyncComplete(timeoutMs = 12000): Promise<void> {
+  if (!useNoriStore.getState().isSyncingFromNostr) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    const unsub = useNoriStore.subscribe((s) => {
+      if (!s.isSyncingFromNostr) {
+        clearTimeout(timer);
+        unsub();
+        resolve();
+      }
+    });
+  });
+}
+
 const ACTION_EFFECTS: Record<NoriAction, { happiness: number; energy: number; social: number }> = {
   zap_received:      { happiness: 15, energy: 10, social: 5  },
   note_published:    { happiness: 5,  energy: -5, social: 10 },

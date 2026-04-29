@@ -16,7 +16,7 @@ const processing = new Set<string>();
 // Fetch the most recent Nostr event from all relays in parallel.
 // Takes the event with the highest created_at so we always get the freshest state.
 async function fetchNostrEvent(filter: object): Promise<Record<string, unknown> | null> {
-  const relays = ['wss://relay.primal.net', 'wss://relay.nostr.band', 'wss://nos.lol'];
+  const relays = ['wss://relay.primal.net', 'wss://relay.nostr.band', 'wss://nos.lol', 'wss://relay.damus.io', 'wss://purplepag.es'];
   const results = await Promise.all(relays.map((r) => fetchFromRelay(r, filter)));
   const events = results.filter(Boolean) as Record<string, unknown>[];
   if (events.length === 0) return null;
