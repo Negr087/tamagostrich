@@ -9,6 +9,21 @@ let sessionId = 0; // increments on each start — async closures capture their 
 let knownFollowers = new Set<string>(); // pubkeys que ya seguían al usuario antes de conectar
 let listenerStartTime = 0; // unix timestamp (seconds) del momento en que arrancó el listener
 
+const STORAGE_KEY = 'tamagostrich-known-followers';
+
+function loadPersistedFollowers(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch { return new Set(); }
+}
+
+function persistFollowers() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...knownFollowers]));
+  } catch {}
+}
+
 export function startNoriListener(pubkey: string) {
   const store = useNoriStore.getState();
   if (store.isListening) return;
@@ -16,6 +31,9 @@ export function startNoriListener(pubkey: string) {
   store.setListening(true);
   const mySession = ++sessionId; // each invocation owns a unique id
   listenerStartTime = Math.floor(Date.now() / 1000);
+
+  // Seed known followers from localStorage so reconnects don't re-fire existing followers
+  knownFollowers = loadPersistedFollowers();
 
   // Aplicar decay acumulado inmediatamente (cubre el tiempo que el browser estuvo cerrado)
   useNoriStore.getState().decayStats();
@@ -56,6 +74,7 @@ export function startNoriListener(pubkey: string) {
         new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 12000)),
       ]);
       existing.forEach(e => knownFollowers.add(e.pubkey));
+      persistFollowers(); // save so reconnects remember these followers
     } catch {
       // non-fatal
     }
@@ -123,6 +142,7 @@ export function startNoriListener(pubkey: string) {
           // Ignorar si ya era seguidor conocido (double-check por si el relay ignoró `since`)
           if (knownFollowers.has(event.pubkey)) break;
           knownFollowers.add(event.pubkey);
+          persistFollowers(); // remember this person across reconnects
           trigger('new_follower', undefined, event.pubkey);
           break;
         }
@@ -148,6 +168,8 @@ export function startNoriListener(pubkey: string) {
 export function stopNoriListener() {
   sessionId++; // invalidate any pending async callbacks
   knownFollowers.clear();
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+
   // Save exact stop time so next session fetches only events after this point.
   useNoriStore.getState().setLastListenerSince(Math.floor(Date.now() / 1000));
   listenerStartTime = 0;
