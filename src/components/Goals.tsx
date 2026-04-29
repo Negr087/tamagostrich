@@ -28,6 +28,19 @@ export default function Goals() {
     // Wait for any in-progress Nostr sync before publishing, so we send the
     // merged state (not stale local state from before the relay fetch completes).
     await waitForSyncComplete();
+
+    // Check that we actually have a signer before trying to publish.
+    // If sessionStorage was cleared (tab closed/reopened on mobile), the nsec
+    // signer is lost — flushSync would silently skip and the server would find
+    // the old Nostr event with stale streakDays/level.
+    const { getNDK, getNip46Session } = await import('@/lib/nostr');
+    const hasSigner = !!getNDK().signer || !!getNip46Session();
+    if (!hasSigner) {
+      setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));
+      setErrorMsgs(s => ({ ...s, [milestoneId]: 'Sesión sin signer activo. Cerrá sesión y volvé a conectarte para sincronizar tu progreso.' }));
+      return;
+    }
+
     await flushSync();
 
     const doAttempt = async () => {
