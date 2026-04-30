@@ -577,10 +577,17 @@ export async function publishSignedEvent(signedEvent: Event): Promise<void> {
   } catch { /* fall through to SimplePool */ }
 
   const pool = new SimplePool();
-  const results = await Promise.allSettled(pool.publish(POPULAR_RELAYS, signedEvent));
+  const PER_RELAY_TIMEOUT = 8000;
+  const withTimeout = (p: Promise<string>) =>
+    Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('relay timeout')), PER_RELAY_TIMEOUT))]);
+  const results = await Promise.allSettled(pool.publish(POPULAR_RELAYS, signedEvent).map(withTimeout));
   pool.close(POPULAR_RELAYS);
-  if (!results.some(r => r.status === 'fulfilled')) {
-    throw new Error('No relay accepted the event');
+  const accepted = results.filter(r =>
+    r.status === 'fulfilled' && !String(r.value).startsWith('connection failure')
+  );
+  if (accepted.length === 0) {
+    const sample = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    throw new Error(sample?.reason?.message ?? 'No relay accepted the event');
   }
 }
 
@@ -648,10 +655,19 @@ export async function publishEvent(params: {
 
   // --- Publish with SimplePool (direct, reliable, throws if no relay accepts) ---
   const pool = new SimplePool();
-  const results = await Promise.allSettled(pool.publish(POPULAR_RELAYS, signedEvent));
+  // SimplePool resolves (instead of rejects) with "connection failure: ..." when a relay is
+  // unreachable. We must treat those as failures, otherwise every failed publish looks like success.
+  const PER_RELAY_TIMEOUT = 8000;
+  const withRelayTimeout = (p: Promise<string>) =>
+    Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('relay timeout')), PER_RELAY_TIMEOUT))]);
+  const results = await Promise.allSettled(pool.publish(POPULAR_RELAYS, signedEvent).map(withRelayTimeout));
   pool.close(POPULAR_RELAYS);
-  if (!results.some(r => r.status === 'fulfilled')) {
-    throw new Error('No relay accepted the event');
+  const accepted = results.filter(r =>
+    r.status === 'fulfilled' && !String(r.value).startsWith('connection failure')
+  );
+  if (accepted.length === 0) {
+    const sample = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    throw new Error(sample?.reason?.message ?? 'No relay accepted the event');
   }
 }
 

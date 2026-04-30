@@ -167,7 +167,14 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
                 </div>
               )}
               {status === 'error' && (
-                <p className="text-xs text-red-400">{errorMsg || t.shareError}</p>
+                <div className="flex items-start gap-3 rounded-xl px-4 py-3 text-sm"
+                  style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)' }}>
+                  <span className="text-xl mt-0.5">❌</span>
+                  <div>
+                    <p className="font-semibold text-red-400">{t.shareError}</p>
+                    <p className="text-red-300/80 text-xs mt-0.5 break-all">{errorMsg}</p>
+                  </div>
+                </div>
               )}
             </>
           )}

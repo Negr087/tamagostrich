@@ -27,7 +27,13 @@ export default function SessionRestorer() {
       if (loginMethod === 'extension' && typeof window !== 'undefined' && window.nostr) {
         ndk.signer = new NDKNip07Signer(4000, ndk);
       } else if (loginMethod === 'nsec') {
-        restoreNsecSigner(); // restores from sessionStorage (survives reload, cleared on tab close)
+        const restored = restoreNsecSigner(); // survives reload, but cleared on tab/browser close
+        if (!restored) {
+          // sessionStorage was cleared (browser closed) — force logout so the user
+          // can re-enter their nsec instead of being stuck with a broken session.
+          useAuthStore.getState().logout();
+          return;
+        }
       } else if (loginMethod === 'bunker' && nip46Session) {
         // Always restore module-level session as fallback for publishPetState
         restoreNip46Session(nip46Session);

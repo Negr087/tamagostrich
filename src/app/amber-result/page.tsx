@@ -20,6 +20,12 @@ export default function AmberResult() {
       cleanAmberUrl();
 
       if (!cb) {
+        // Show the raw hash so we can diagnose format issues if the callback wasn't parsed.
+        const rawHash = typeof window !== 'undefined' ? window.location.hash : '';
+        if (rawHash) {
+          setStatus(`Sin callback. Hash: ${rawHash.slice(0, 80)}`);
+          await new Promise(r => setTimeout(r, 3000));
+        }
         router.replace('/');
         return;
       }
