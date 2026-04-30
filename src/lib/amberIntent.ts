@@ -60,7 +60,11 @@ export function openAmberLogin() {
 
 // hexPubkey is passed as the "pubKey" query param so Amber selects the right account.
 export function openAmberSign(unsignedEvent: object, source = 'unknown', hexPubkey?: string) {
-  const eventJson = JSON.stringify(unsignedEvent);
+  // Amber does Uri.decode(uri).split("?") to separate event JSON from query params.
+  // Any "?" in the decoded content (including content from encodeURIComponent) breaks
+  // the split. Escaping "?" as the JSON Unicode sequence ? is invisible to
+  // split("?") but all JSON parsers decode it back to "?" correctly.
+  const eventJson = JSON.stringify(unsignedEvent).replace(/\?/g, '\\u003F');
   // Callback: Amber appends the signed event → https://myapp.com/#amber-sign<url-encoded-json>
   const cb = `${origin()}/${SIGN_HASH}`;
 
