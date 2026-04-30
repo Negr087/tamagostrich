@@ -91,7 +91,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 // Login methods
-export type LoginMethod = 'extension' | 'nsec' | 'bunker';
+export type LoginMethod = 'extension' | 'nsec' | 'bunker' | 'amber';
 
 export async function loginWithExtension(): Promise<NDKUser | null> {
   if (typeof window === 'undefined') {
@@ -335,6 +335,15 @@ export async function signEventViaNip46(
   });
 }
 
+// Called after Amber intent returns the user's hex pubkey via callback URL.
+// No signer is set — signing will use the Amber intent flow.
+export async function loginWithAmberPubkey(hexPubkey: string): Promise<NDKUser | null> {
+  const ndk = getNDK();
+  const user = ndk.getUser({ pubkey: hexPubkey });
+  try { await withTimeout(user.fetchProfile(), 8000); } catch {}
+  return user;
+}
+
 export async function loginWithBunker(bunkerUrl: string): Promise<NDKUser | null> {
   // bunker://pubkey?relay=wss://relay.nsecbunker.com&secret=optional
   // NDK v3 accepts the full bunker:// URL string directly — don't parse it manually.
@@ -554,16 +563,45 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
   }
 }
 
+// Publish already-signed event (used by the Amber intent callback flow).
+export async function publishSignedEvent(signedEvent: Event): Promise<void> {
+  const pool = new SimplePool();
+  await Promise.allSettled(pool.publish(POPULAR_RELAYS, signedEvent));
+  pool.close(POPULAR_RELAYS);
+}
+
 // Publish any event, handling both direct signers (NIP-07/nsec) and NIP-46 remote signers (Amber).
-// onSigningPending is called when a NIP-46 signing request is sent (so the UI can tell the
-// user to open Amber). Throws if no signer is available.
+// For the Amber intent login method, throws AmberIntentRedirect — the caller should open
+// the Amber intent instead of waiting for a Promise to resolve.
+// onSigningPending is called when a NIP-46 relay signing request is sent.
+export class AmberIntentRedirect extends Error {
+  constructor() { super('amber_intent_redirect'); }
+}
+
 export async function publishEvent(params: {
   kind: number;
   content: string;
   tags?: string[][];
   onSigningPending?: () => void;
+  pubkey?: string;
 }): Promise<void> {
   const ndk = getNDK();
+
+  // Check if login method is 'amber' (intent-based, not relay-based NIP-46)
+  const { useAuthStore } = await import('@/store/auth');
+  const authState = useAuthStore.getState();
+  if (authState.loginMethod === 'amber') {
+    if (!authState.profile?.pubkey) throw new Error('No pubkey available');
+    const { openAmberSign } = await import('@/lib/amberIntent');
+    openAmberSign({
+      kind: params.kind,
+      content: params.content,
+      tags: params.tags || [],
+      created_at: Math.floor(Date.now() / 1000),
+      pubkey: authState.profile.pubkey,
+    });
+    throw new AmberIntentRedirect();
+  }
 
   if (ndk.signer) {
     const event = new NDKEvent(ndk);
@@ -575,8 +613,7 @@ export async function publishEvent(params: {
   }
 
   if (nip46Session) {
-    const { useAuthStore } = await import('@/store/auth');
-    const pubkey = useAuthStore.getState().profile?.pubkey;
+    const pubkey = authState.profile?.pubkey;
     if (!pubkey) throw new Error('No pubkey available');
     const signed = await signEventViaNip46(
       {

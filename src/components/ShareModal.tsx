@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { publishEvent } from '@/lib/nostr';
+import { publishEvent, AmberIntentRedirect } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
 import { useAuthStore } from '@/store/auth';
 import { ANIMAL_META } from '@/lib/petModels';
@@ -72,6 +72,8 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
       setStatus('success');
       setAmberPending(false);
     } catch (e: unknown) {
+      // AmberIntentRedirect: Amber intent opened, page will navigate — close modal silently
+      if (e instanceof AmberIntentRedirect) { onClose(); return; }
       setAmberPending(false);
       setErrorMsg(e instanceof Error ? e.message : t.shareError);
       setStatus('error');

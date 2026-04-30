@@ -13,6 +13,8 @@ import {
   LoginMethod,
 } from '@/lib/nostr';
 import { useNostrConnect } from '@/lib/use-nostr-connect';
+import { isAndroid, openAmberLogin } from '@/lib/amberIntent';
+import { useLang } from '@/lib/i18n';
 
 const NIP46_RELAYS = [
   'wss://relay.nsec.app',
@@ -33,16 +35,19 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [bunkerInput, setBunkerInput] = useState('');
   const [hasNip07, setHasNip07] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isAndroidDevice, setIsAndroidDevice] = useState(false);
   const [bunkerTab, setBunkerTab] = useState<BunkerTab>('qr');
   const [copied, setCopied] = useState(false);
   const [loadingMethod, setLoadingMethod] = useState<LoginMethod | null>(null);
   const loginInProgressRef = useRef(false);
   const { setUser, setLoading, setError, isLoading, error } = useAuthStore();
+  const { t } = useLang();
 
   const nip46 = useNostrConnect(NIP46_RELAYS);
 
   useEffect(() => {
     setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    setIsAndroidDevice(isAndroid());
   }, []);
 
   useEffect(() => {
@@ -302,6 +307,28 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
             </button>
+
+            {/* Amber — only shown on Android */}
+            {isAndroidDevice && (
+              <button
+                onClick={openAmberLogin}
+                disabled={isLoading}
+                className="w-full flex items-center gap-4 p-4 border rounded-xl transition-all duration-200 disabled:opacity-50 group"
+                style={{ background: 'rgba(180,249,83,0.06)', borderColor: 'rgba(180,249,83,0.3)' }}
+              >
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
+                  style={{ background: 'rgba(180,249,83,0.12)' }}>
+                  🟡
+                </div>
+                <div className="text-left flex-1">
+                  <div className="font-semibold" style={{ color: '#b4f953' }}>{t.amberLoginBtn}</div>
+                  <div className="text-sm text-lc-muted">{t.amberLoginDesc}</div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b4f953" strokeWidth="2" className="opacity-0 group-hover:opacity-100 transition">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            )}
           </div>
 
         // nsec screen

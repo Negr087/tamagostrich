@@ -114,6 +114,11 @@ export const T = {
     shareAmberPending: 'Abrí Amber para firmar la publicación',
     shareAmberPendingSub: 'Esperando tu aprobación en Amber...',
 
+    // Amber intent
+    amberLoginBtn: 'Conectar con Amber',
+    amberLoginDesc: 'Abre Amber para conectar tu identidad Nostr',
+    amberLoginSuccess: '✓ Conectado con Amber',
+
     // Death & revival
     petDeadTitle: '💀 Tu mascota murió',
     petDeadDesc: 'Sus estadísticas llegaron a cero por falta de actividad en Nostr.',
@@ -252,6 +257,11 @@ export const T = {
     shareEditPlaceholder: 'Edit your message before publishing...',
     shareAmberPending: 'Open Amber to sign the post',
     shareAmberPendingSub: 'Waiting for your approval in Amber...',
+
+    // Amber intent
+    amberLoginBtn: 'Connect with Amber',
+    amberLoginDesc: 'Opens Amber to connect your Nostr identity',
+    amberLoginSuccess: '✓ Connected with Amber',
 
     // Death & revival
     petDeadTitle: '💀 Your pet died',
