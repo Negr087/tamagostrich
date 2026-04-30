@@ -46,8 +46,16 @@ export function openAmberLogin() {
   window.location.href = `nostrsigner:get_public_key?callbackUrl=${encodeURIComponent(callbackUrl('login'))}`;
 }
 
+// btoa() only handles Latin1; encode as UTF-8 bytes first to support emojis and accents
+function toBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
 export function openAmberSign(unsignedEvent: object, source = 'unknown') {
-  const payload = btoa(JSON.stringify(unsignedEvent));
+  const payload = toBase64(JSON.stringify(unsignedEvent));
   savePending({ action: 'sign', source, unsignedEvent, timestamp: Date.now() });
   window.location.href = `nostrsigner:sign_event?payload=${payload}&callbackUrl=${encodeURIComponent(callbackUrl('sign'))}`;
 }
@@ -86,8 +94,14 @@ export function parseAmberCallback(): AmberCallbackResult | null {
   // Amber can use 'event' or 'result' for sign_event
   const eventRaw = params.get('event') ?? params.get('result') ?? undefined;
   if (eventRaw && action === 'sign') {
-    try { event = JSON.parse(atob(eventRaw)); } catch {
-      try { event = JSON.parse(eventRaw); } catch {}
+    try {
+      // Decode UTF-8 base64 (handles emojis and non-Latin1 chars)
+      const bytes = Uint8Array.from(atob(eventRaw), c => c.charCodeAt(0));
+      event = JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      try { event = JSON.parse(atob(eventRaw)); } catch {
+        try { event = JSON.parse(eventRaw); } catch {}
+      }
     }
   }
 
