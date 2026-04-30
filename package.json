@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@getalby/lightning-tools": "^8.1.0",
     "@noble/hashes": "^2.0.1",
     "@noble/secp256k1": "^3.0.0",
     "@nostr-dev-kit/ndk": "^3.0.3",

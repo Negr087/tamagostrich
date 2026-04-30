@@ -126,12 +126,14 @@ export const T = {
     petReviving: 'Procesando pago...',
     petReviveSuccess: '¡Revivida! 🎉',
     petReviveError: 'No se pudo procesar el pago. Intentá de nuevo.',
-    petReviveManualTitle: 'Escaneá o copiá para pagar',
+    petReviveManualTitle: 'Escaneá el QR o copiá la factura',
     petRevivePaid: '⚡ Pago recibido',
     petRevivePaidSub: 'Reviviendo tu mascota...',
     petReviveNoConfig: 'La resurrección no está configurada en este servidor.',
-    petReviveCopy: 'Copiar invoice',
+    petReviveCopy: 'Copiar factura',
     petReviveCopied: '¡Copiado!',
+    petReviveOpenWallet: 'Abrir con wallet Lightning',
+    petReviveWaiting: 'Esperando pago...',
 
     // Leaderboard
     navRanking: 'Ranking',
@@ -270,12 +272,14 @@ export const T = {
     petReviving: 'Processing payment...',
     petReviveSuccess: 'Revived! 🎉',
     petReviveError: 'Could not process payment. Please try again.',
-    petReviveManualTitle: 'Scan or copy to pay',
+    petReviveManualTitle: 'Scan the QR or copy the invoice',
     petRevivePaid: '⚡ Payment received',
     petRevivePaidSub: 'Reviving your pet...',
     petReviveNoConfig: 'Revival is not configured on this server.',
     petReviveCopy: 'Copy invoice',
     petReviveCopied: 'Copied!',
+    petReviveOpenWallet: 'Open with Lightning wallet',
+    petReviveWaiting: 'Waiting for payment...',
 
     // Leaderboard
     navRanking: 'Ranking',

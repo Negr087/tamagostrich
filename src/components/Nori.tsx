@@ -12,6 +12,7 @@ import { buildAnimal, animatePet, makePetMats, preloadGLBs, PetParts, PetMats, P
 import { startNoriListener, stopNoriListener } from '@/lib/noriEvents';
 import { getNDK } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
+import { LightningAddress } from '@getalby/lightning-tools';
 import PetSelector from './PetSelector';
 import ShareModal from './ShareModal';
 
@@ -195,11 +196,11 @@ export default function NoriTamagotchi() {
 
   // Revival payment state
   const [reviving, setReviving]           = useState(false);
-  const [reviveError, setReviveError]     = useState('');
   const [reviveInvoice, setReviveInvoice] = useState('');
-  const [paymentHash, setPaymentHash]     = useState('');
   const [paymentReceived, setPaymentReceived] = useState(false);
+  const [reviveError, setReviveError]     = useState('');
   const [copied, setCopied]               = useState(false);
+  const reviveInvoiceRef = useRef<{ verifyPayment: () => Promise<boolean> } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const idleTime = useIdleTime(lastEventTime);
   const fetchingSet = useRef<Set<string>>(new Set());
@@ -511,26 +512,23 @@ export default function NoriTamagotchi() {
     };
   }, [isConnected, profile, animalType]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll payment status while invoice is displayed
-  const doRevive = useCallback(() => {
-    revive();
-    flushSync();
-    setReviveInvoice('');
-    setPaymentHash('');
-    setPaymentReceived(false);
-  }, [revive]);
-
+  // Polling: check verifyPayment() every 3s while invoice is showing
   useEffect(() => {
-    if (!paymentHash || paymentReceived) return;
+    if (!reviveInvoice || paymentReceived) return;
 
     const check = async () => {
       try {
-        const res = await fetch(`/api/revive-pet/status?hash=${paymentHash}`);
-        const data = await res.json() as { paid?: boolean };
-        if (data.paid) {
+        const paid = reviveInvoiceRef.current && await reviveInvoiceRef.current.verifyPayment();
+        if (paid) {
           if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
           setPaymentReceived(true);
-          setTimeout(() => doRevive(), 2500);
+          setTimeout(() => {
+            revive();
+            flushSync();
+            setReviveInvoice('');
+            setPaymentReceived(false);
+            reviveInvoiceRef.current = null;
+          }, 2000);
         }
       } catch { /* retry next tick */ }
     };
@@ -540,33 +538,20 @@ export default function NoriTamagotchi() {
     return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
-  }, [paymentHash, paymentReceived, doRevive]);
+  }, [reviveInvoice, paymentReceived, revive]);
 
   async function handleRevive() {
     setReviving(true);
     setReviveError('');
     setReviveInvoice('');
-    setPaymentHash('');
     setPaymentReceived(false);
+    reviveInvoiceRef.current = null;
     try {
-      const res = await fetch('/api/revive-pet');
-      const data = await res.json() as { invoice?: string; paymentHash?: string; error?: string };
-      if (!res.ok || !data.invoice) {
-        setReviveError(data.error ?? t.petReviveError);
-        return;
-      }
-      const invoice = data.invoice;
-
-      if (typeof window !== 'undefined' && (window as unknown as { webln?: { enable: () => Promise<void>; sendPayment: (i: string) => Promise<unknown> } }).webln) {
-        const webln = (window as unknown as { webln: { enable: () => Promise<void>; sendPayment: (i: string) => Promise<unknown> } }).webln;
-        await webln.enable();
-        await webln.sendPayment(invoice);
-        revive();
-        await flushSync();
-      } else {
-        setReviveInvoice(invoice);
-        setPaymentHash(data.paymentHash ?? '');
-      }
+      const ln = new LightningAddress('negr0@blink.sv');
+      await ln.fetch();
+      const invoice = await ln.requestInvoice({ satoshi: 21, comment: 'Tamagostrich revival' });
+      reviveInvoiceRef.current = invoice;
+      setReviveInvoice(invoice.paymentRequest);
     } catch (e: unknown) {
       setReviveError(e instanceof Error ? e.message : t.petReviveError);
     } finally {
@@ -752,18 +737,26 @@ export default function NoriTamagotchi() {
                 ) : (
                   <div className="flex flex-col items-center gap-3 w-full max-w-[260px]">
                     <div className="text-sm font-semibold text-lc-white">{t.petReviveManualTitle}</div>
-                    {/* QR code */}
+                    {/* QR del invoice BOLT11 */}
                     <div className="bg-white p-3 rounded-2xl">
                       <QRCodeSVG value={reviveInvoice.toUpperCase()} size={180} />
                     </div>
-                    {/* Copy button */}
+                    {/* Abrir wallet Lightning (funciona en móvil) */}
+                    <a
+                      href={`lightning:${reviveInvoice}`}
+                      className="w-full py-2.5 text-xs font-bold rounded-xl text-center transition"
+                      style={{ background: 'linear-gradient(90deg,#f97316,#ef4444)', color: '#fff' }}
+                    >
+                      ⚡ {t.petReviveOpenWallet}
+                    </a>
+                    {/* Copiar invoice */}
                     <button
                       onClick={handleCopyInvoice}
                       className="w-full py-2.5 text-xs font-bold rounded-xl border border-lc-border text-lc-white hover:bg-lc-border/40 transition"
                     >
                       {copied ? t.petReviveCopied : t.petReviveCopy}
                     </button>
-                    <p className="text-[10px] text-lc-muted animate-pulse">Esperando pago...</p>
+                    <p className="text-[10px] text-lc-muted animate-pulse">{t.petReviveWaiting}</p>
                   </div>
                 )}
               </div>
