@@ -587,12 +587,16 @@ export async function publishEvent(params: {
 }): Promise<void> {
   const ndk = getNDK();
 
-  // Check if login method is 'amber' (intent-based, not relay-based NIP-46)
   const { useAuthStore } = await import('@/store/auth');
   const authState = useAuthStore.getState();
-  if (authState.loginMethod === 'amber') {
+  const { isAndroid, openAmberSign } = await import('@/lib/amberIntent');
+
+  // Use Amber intent (nostrsigner: deep link) when:
+  // - loginMethod is 'amber', OR
+  // - loginMethod is 'bunker' on Android (relay-based NIP-46 doesn't work on mobile
+  //   because the browser tab suspends when switching to Amber)
+  if (authState.loginMethod === 'amber' || (authState.loginMethod === 'bunker' && isAndroid())) {
     if (!authState.profile?.pubkey) throw new Error('No pubkey available');
-    const { openAmberSign } = await import('@/lib/amberIntent');
     openAmberSign({
       kind: params.kind,
       content: params.content,
