@@ -6,6 +6,7 @@ import { nip19 } from 'nostr-tools';
 let subscription: NDKSubscription | null = null;
 let decayInterval: ReturnType<typeof setInterval> | null = null;
 let sessionId = 0; // increments on each start — async closures capture their own copy
+let lastNoActivityFired = 0; // throttle: no_activity fires at most once every 30 min
 let knownFollowers = new Set<string>(); // pubkeys que ya seguían al usuario antes de conectar
 let listenerStartTime = 0; // unix timestamp (seconds) del momento en que arrancó el listener
 
@@ -46,11 +47,13 @@ export function startNoriListener(pubkey: string) {
     // Subtract 5 min as a buffer to avoid gaps at session boundaries.
     useNoriStore.getState().setLastListenerSince(Math.floor(Date.now() / 1000) - 300);
 
-    // Animación de sueño si lleva 5+ minutos sin actividad
+    // Penalización de inactividad: máximo 1 vez cada 30 min para no matar el pet en minutos.
     const s = useNoriStore.getState();
     const idleMin = (Date.now() - s.lastEventTime) / 60000;
-    if (idleMin >= 5) {
+    const NO_ACTIVITY_THROTTLE_MS = 30 * 60000;
+    if (idleMin >= 5 && Date.now() - lastNoActivityFired >= NO_ACTIVITY_THROTTLE_MS) {
       s.triggerAction('no_activity', undefined);
+      lastNoActivityFired = Date.now();
     }
   }, 60000);
 

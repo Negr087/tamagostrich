@@ -240,8 +240,8 @@ export const useNoriStore = create<NoriState>()(
         const elapsed = now - state.lastDecayTime;
         if (elapsed < 60000) return; // mínimo 1 minuto entre llamadas
 
-        // 100 pts en exactamente 24h sin actividad → 100/1440 pts por minuto
-        const RATE = 100 / 1440;
+        // 100 pts en exactamente 72h sin actividad → 100/4320 pts por minuto
+        const RATE = 100 / 4320;
         const minutes = elapsed / 60000; // fracción exacta, sin floor
 
         const newStats: NoriStats = {
