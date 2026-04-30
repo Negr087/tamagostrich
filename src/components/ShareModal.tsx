@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { publishEvent, AmberIntentRedirect } from '@/lib/nostr';
+import { isAndroid, openAmberSign } from '@/lib/amberIntent';
 import { useLang } from '@/lib/i18n';
 import { useAuthStore } from '@/store/auth';
 import { ANIMAL_META } from '@/lib/petModels';
@@ -59,6 +60,23 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
   }, [isOpen, lang, level, streakDays, happiness, energy, social, animalType]);
 
   async function handlePublish() {
+    // Android + Amber: redirect SYNCHRONOUSLY inside the gesture handler so Chrome
+    // doesn't block the nostrsigner: custom scheme navigation (gesture timeout).
+    if ((loginMethod === 'bunker' || loginMethod === 'amber') && isAndroid()) {
+      const hexPubkey = useAuthStore.getState().profile?.pubkey;
+      if (hexPubkey) {
+        openAmberSign({
+          kind: 1,
+          content: draft,
+          tags: [['t', 'tamagostrich'], ['t', 'nostr']],
+          created_at: Math.floor(Date.now() / 1000),
+          pubkey: hexPubkey,
+        }, 'share', hexPubkey);
+        onClose();
+        return;
+      }
+    }
+
     setStatus('loading');
     setErrorMsg('');
     setAmberPending(false);
@@ -72,7 +90,6 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
       setStatus('success');
       setAmberPending(false);
     } catch (e: unknown) {
-      // AmberIntentRedirect: Amber intent opened, page will navigate — close modal silently
       if (e instanceof AmberIntentRedirect) { onClose(); return; }
       setAmberPending(false);
       setErrorMsg(e instanceof Error ? e.message : t.shareError);

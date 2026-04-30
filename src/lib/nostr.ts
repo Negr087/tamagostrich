@@ -1,6 +1,7 @@
 import NDK, { NDKEvent, NDKUser, NDKNip07Signer, NDKPrivateKeySigner } from '@nostr-dev-kit/ndk';
 import { nip19, nip44, nip04, finalizeEvent, SimplePool } from 'nostr-tools';
 import type { UnsignedEvent, Event } from 'nostr-tools';
+import { isAndroid, openAmberSign } from '@/lib/amberIntent';
 
 // Popular relays (high availability)
 const POPULAR_RELAYS = [
@@ -589,7 +590,6 @@ export async function publishEvent(params: {
 
   const { useAuthStore } = await import('@/store/auth');
   const authState = useAuthStore.getState();
-  const { isAndroid, openAmberSign } = await import('@/lib/amberIntent');
 
   // Use Amber intent (nostrsigner: deep link) when:
   // - loginMethod is 'amber', OR
