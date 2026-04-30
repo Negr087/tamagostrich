@@ -179,8 +179,9 @@ export async function loginWithNsec(nsec: string): Promise<NDKUser | null> {
 // NIP-46 session for remote signing (set after loginWithRemoteSigner)
 export interface Nip46Session {
   signerPubkey: string;
-  clientSecretHex: string;
+  clientSecretHex: string; // empty string for bunker:// URL logins (use signerPayload instead)
   relays: string[];
+  signerPayload?: string; // NDKNip46Signer.toPayload() — stored for bunker:// URL logins
 }
 
 let nip46Session: Nip46Session | null = null;
@@ -228,8 +229,12 @@ export async function loginWithRemoteSigner(
 }
 
 // Sign an event via NIP-46 remote signer (used after loginWithRemoteSigner)
+// onPending is called after publishing the signing request, so the UI can tell the user
+// to open Amber. Uses visibilitychange to re-query the relay when the user comes back
+// from the Amber app (mobile browser suspends tabs when switching apps).
 export async function signEventViaNip46(
-  unsignedEvent: UnsignedEvent
+  unsignedEvent: UnsignedEvent,
+  onPending?: () => void,
 ): Promise<Event | null> {
   if (!nip46Session) return null;
 
@@ -261,40 +266,72 @@ export async function signEventViaNip46(
   }, clientSecretBytes);
 
   return new Promise((resolve) => {
+    let resolved = false;
     let timer: ReturnType<typeof setTimeout>;
+    let currentSub: ReturnType<typeof pool.subscribeMany>;
 
-    const sub = pool.subscribeMany(
-      sessionRelays,
-      [{ kinds: [24133], '#p': [clientPubkey], since: sinceTs }] as any,
-      {
-        async onevent(event) {
-          if (event.pubkey !== signerPubkey) return;
-          try {
-            let decrypted: string;
-            try {
-              decrypted = nip44.decrypt(event.content, nip44.getConversationKey(clientSecretBytes, signerPubkey));
-            } catch {
-              decrypted = await nip04.decrypt(clientSecretHex, signerPubkey, event.content);
-            }
-            const msg = JSON.parse(decrypted);
-            if (msg.id === reqId && msg.result) {
-              clearTimeout(timer);
-              sub.close();
-              pool.close(sessionRelays);
-              resolve(msg.result as Event);
-            }
-          } catch {}
-        },
-      }
-    );
+    const cleanup = () => {
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+      clearTimeout(timer);
+      try { currentSub?.close(); } catch {}
+      try { pool.close(sessionRelays); } catch {}
+    };
 
-    timer = setTimeout(() => {
-      sub.close();
-      pool.close(sessionRelays);
-      resolve(null);
-    }, 15000);
+    const doResolve = (result: Event | null) => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(result);
+    };
 
-    Promise.allSettled(pool.publish(sessionRelays, reqEvent));
+    const tryDecrypt = async (event: any): Promise<boolean> => {
+      if (resolved || event.pubkey !== signerPubkey) return false;
+      try {
+        let decrypted: string;
+        try {
+          decrypted = nip44.decrypt(event.content, nip44.getConversationKey(clientSecretBytes, signerPubkey));
+        } catch {
+          decrypted = await nip04.decrypt(clientSecretHex, signerPubkey, event.content);
+        }
+        const msg = JSON.parse(decrypted);
+        if (msg.id === reqId && msg.result) { doResolve(msg.result as Event); return true; }
+      } catch {}
+      return false;
+    };
+
+    const subscribe = () => {
+      try { currentSub?.close(); } catch {}
+      currentSub = pool.subscribeMany(
+        sessionRelays,
+        [{ kinds: [24133], '#p': [clientPubkey], since: sinceTs }] as any,
+        { async onevent(event: any) { await tryDecrypt(event); } }
+      );
+    };
+
+    // When the user comes back from Amber (page becomes visible), re-query the relay
+    // because mobile browsers suspend WebSocket connections while backgrounded.
+    const onVisible = async () => {
+      if (resolved || typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+      try {
+        const events = await pool.querySync(
+          sessionRelays,
+          { kinds: [24133], '#p': [clientPubkey], since: sinceTs } as any,
+        );
+        for (const event of events) {
+          if (resolved) return;
+          const found = await tryDecrypt(event);
+          if (found) return;
+        }
+      } catch {}
+      if (!resolved) subscribe();
+    };
+
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+
+    subscribe();
+    timer = setTimeout(() => doResolve(null), 60000); // 60 second timeout
+
+    Promise.allSettled(pool.publish(sessionRelays, reqEvent)).then(() => onPending?.());
   });
 }
 
@@ -518,11 +555,13 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
 }
 
 // Publish any event, handling both direct signers (NIP-07/nsec) and NIP-46 remote signers (Amber).
-// Throws if no signer is available.
+// onSigningPending is called when a NIP-46 signing request is sent (so the UI can tell the
+// user to open Amber). Throws if no signer is available.
 export async function publishEvent(params: {
   kind: number;
   content: string;
   tags?: string[][];
+  onSigningPending?: () => void;
 }): Promise<void> {
   const ndk = getNDK();
 
@@ -539,17 +578,20 @@ export async function publishEvent(params: {
     const { useAuthStore } = await import('@/store/auth');
     const pubkey = useAuthStore.getState().profile?.pubkey;
     if (!pubkey) throw new Error('No pubkey available');
-    const signed = await signEventViaNip46({
-      kind: params.kind,
-      pubkey,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: params.tags || [],
-      content: params.content,
-    } as UnsignedEvent);
+    const signed = await signEventViaNip46(
+      {
+        kind: params.kind,
+        pubkey,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: params.tags || [],
+        content: params.content,
+      } as UnsignedEvent,
+      params.onSigningPending,
+    );
     if (!signed) throw new Error('NIP-46 signing timed out or rejected');
-    const pool = new SimplePool();
-    await Promise.allSettled(pool.publish(POPULAR_RELAYS, signed));
-    pool.close(POPULAR_RELAYS);
+    const publishPool = new SimplePool();
+    await Promise.allSettled(publishPool.publish(POPULAR_RELAYS, signed));
+    publishPool.close(POPULAR_RELAYS);
     return;
   }
 

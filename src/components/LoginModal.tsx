@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useAuthStore } from '@/store/auth';
 import {
   connectNDK,
+  getNDK,
   loginWithExtension,
   loginWithNsec,
   loginWithBunker,
@@ -157,7 +158,18 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       }
 
       if (user) {
-        setUser(user, loginMethod);
+        // For bunker:// URL logins, serialize the signer so it can be restored on page reload.
+        // Without this, ndk.signer is lost after reload and signing fails completely.
+        let nip46SessionData = undefined;
+        if (loginMethod === 'bunker' && getNDK().signer) {
+          try {
+            const payload = (getNDK().signer as any).toPayload?.();
+            if (payload) {
+              nip46SessionData = { signerPubkey: '', clientSecretHex: '', relays: [], signerPayload: payload };
+            }
+          } catch { /* toPayload not available on this signer type */ }
+        }
+        setUser(user, loginMethod, nip46SessionData);
         onClose();
       }
     } catch (err) {

@@ -111,6 +111,8 @@ export const T = {
     shareSuccess: '¡Publicado! Tu progreso está en Nostr 🎉',
     shareError: 'No se pudo publicar. ¿Tenés signer activo?',
     shareEditPlaceholder: 'Editá tu mensaje antes de publicar...',
+    shareAmberPending: 'Abrí Amber para firmar la publicación',
+    shareAmberPendingSub: 'Esperando tu aprobación en Amber...',
 
     // Death & revival
     petDeadTitle: '💀 Tu mascota murió',
@@ -248,6 +250,8 @@ export const T = {
     shareSuccess: 'Published! Your progress is on Nostr 🎉',
     shareError: 'Could not publish. Is your signer active?',
     shareEditPlaceholder: 'Edit your message before publishing...',
+    shareAmberPending: 'Open Amber to sign the post',
+    shareAmberPendingSub: 'Waiting for your approval in Amber...',
 
     // Death & revival
     petDeadTitle: '💀 Your pet died',

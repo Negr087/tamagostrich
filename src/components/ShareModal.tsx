@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { publishEvent } from '@/lib/nostr';
 import { useLang } from '@/lib/i18n';
+import { useAuthStore } from '@/store/auth';
 import { ANIMAL_META } from '@/lib/petModels';
 import type { AnimalType } from '@/lib/petModels';
 
@@ -45,12 +46,14 @@ function buildDraft(opts: {
 
 export default function ShareModal({ isOpen, onClose, level, streakDays, happiness, energy, social, animalType }: Props) {
   const { t, lang } = useLang();
+  const loginMethod = useAuthStore(s => s.loginMethod);
   const [draft, setDraft] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [amberPending, setAmberPending] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) { setStatus('idle'); setErrorMsg(''); return; }
+    if (!isOpen) { setStatus('idle'); setErrorMsg(''); setAmberPending(false); return; }
     const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://tamagostrich.vercel.app';
     setDraft(buildDraft({ lang, level, streakDays, happiness, energy, social, animalType, appUrl }));
   }, [isOpen, lang, level, streakDays, happiness, energy, social, animalType]);
@@ -58,14 +61,18 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
   async function handlePublish() {
     setStatus('loading');
     setErrorMsg('');
+    setAmberPending(false);
     try {
       await publishEvent({
         kind: 1,
         content: draft,
         tags: [['t', 'tamagostrich'], ['t', 'nostr']],
+        onSigningPending: () => setAmberPending(true),
       });
       setStatus('success');
+      setAmberPending(false);
     } catch (e: unknown) {
+      setAmberPending(false);
       setErrorMsg(e instanceof Error ? e.message : t.shareError);
       setStatus('error');
     }
@@ -129,6 +136,17 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
                   </button>
                 </div>
               </div>
+              {/* NIP-46 (Amber) pending: tell the user to open Amber to approve */}
+              {amberPending && loginMethod === 'bunker' && (
+                <div className="flex items-start gap-3 rounded-xl px-4 py-3 text-sm"
+                  style={{ background: 'rgba(180,249,83,0.08)', border: '1px solid rgba(180,249,83,0.25)' }}>
+                  <span className="text-xl mt-0.5">📱</span>
+                  <div>
+                    <p className="font-semibold text-lc-green">{t.shareAmberPending}</p>
+                    <p className="text-lc-muted text-xs mt-0.5">{t.shareAmberPendingSub}</p>
+                  </div>
+                </div>
+              )}
               {status === 'error' && (
                 <p className="text-xs text-red-400">{errorMsg || t.shareError}</p>
               )}
