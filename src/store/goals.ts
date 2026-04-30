@@ -167,6 +167,7 @@ interface GoalsState {
   claimedRewards: string[];
 
   recordAction: (action: NoriAction, detail?: string) => void;
+  loseLevel: () => void;
   markRewardClaimed: (milestone: string) => void;
   loadFromSync: (remote: { xp: number; level: number; unlockedAchievements: string[]; actionCounts: Record<string, number>; lastActiveDay: string | null; streakDays: number; claimedRewards?: string[] }) => void;
   clearNotifications: () => void;
@@ -247,6 +248,15 @@ export const useGoalsStore = create<GoalsState>()(
           justLeveledUp: leveledUp,
           recentUnlocks: newAchievements,
         });
+      },
+
+      loseLevel: () => {
+        const s = get();
+        if (s.level <= 1) return;
+        const newLevel = s.level - 1;
+        // Drop XP to the exact floor of the new level so ranking reflects it immediately
+        const newXP = LEVEL_THRESHOLDS[newLevel - 1];
+        set({ level: newLevel, xp: newXP });
       },
 
       markRewardClaimed: (milestone) => {

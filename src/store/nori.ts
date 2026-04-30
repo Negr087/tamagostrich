@@ -257,6 +257,9 @@ export const useNoriStore = create<NoriState>()(
           isDead: justDied ? true : state.isDead,
           mood: computeMoodFromStats(newStats, state.lastEventTime),
         });
+        if (justDied && !state.isDead) {
+          useGoalsStore.getState().loseLevel();
+        }
         scheduleSync();
       },
 
