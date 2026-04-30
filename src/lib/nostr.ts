@@ -604,11 +604,8 @@ export async function publishEvent(params: {
   const { useAuthStore } = await import('@/store/auth');
   const authState = useAuthStore.getState();
 
-  // Use Amber intent (nostrsigner: deep link) when:
-  // - loginMethod is 'amber', OR
-  // - loginMethod is 'bunker' on Android (relay-based NIP-46 doesn't work on mobile
-  //   because the browser tab suspends when switching to Amber)
-  if (authState.loginMethod === 'amber' || (authState.loginMethod === 'bunker' && isAndroid())) {
+  // Android + bunker/amber: use Amber intent (relay signing doesn't work when tab suspends)
+  if ((authState.loginMethod === 'amber' || authState.loginMethod === 'bunker') && isAndroid()) {
     const hexPubkey = authState.profile?.pubkey;
     if (!hexPubkey) throw new Error('No pubkey available');
     openAmberSign({
@@ -621,36 +618,41 @@ export async function publishEvent(params: {
     throw new AmberIntentRedirect();
   }
 
+  // --- Sign the event ---
+  let signedEvent: Event;
+
   if (ndk.signer) {
+    // Covers: nsec (NDKPrivateKeySigner), extension (NDKNip07Signer),
+    //         bunker/QR (NDKNip46Signer restored by SessionRestorer)
     const event = new NDKEvent(ndk);
     event.kind = params.kind;
     event.content = params.content;
     event.tags = params.tags || [];
-    await event.publish();
-    return;
-  }
-
-  if (nip46Session) {
+    if (params.onSigningPending) params.onSigningPending();
+    await event.sign();
+    signedEvent = event.rawEvent() as unknown as Event;
+  } else if (nip46Session) {
+    // Fallback: manual NIP-46 signing (QR login when NDKNip46Signer restore failed)
     const pubkey = authState.profile?.pubkey;
     if (!pubkey) throw new Error('No pubkey available');
     const signed = await signEventViaNip46(
-      {
-        kind: params.kind,
-        pubkey,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: params.tags || [],
-        content: params.content,
-      } as UnsignedEvent,
+      { kind: params.kind, pubkey, created_at: Math.floor(Date.now() / 1000),
+        tags: params.tags || [], content: params.content } as UnsignedEvent,
       params.onSigningPending,
     );
     if (!signed) throw new Error('NIP-46 signing timed out or rejected');
-    const publishPool = new SimplePool();
-    await Promise.allSettled(publishPool.publish(POPULAR_RELAYS, signed));
-    publishPool.close(POPULAR_RELAYS);
-    return;
+    signedEvent = signed;
+  } else {
+    throw new Error('No signer available — please log in again');
   }
 
-  throw new Error('No signer available');
+  // --- Publish with SimplePool (direct, reliable, throws if no relay accepts) ---
+  const pool = new SimplePool();
+  const results = await Promise.allSettled(pool.publish(POPULAR_RELAYS, signedEvent));
+  pool.close(POPULAR_RELAYS);
+  if (!results.some(r => r.status === 'fulfilled')) {
+    throw new Error('No relay accepted the event');
+  }
 }
 
 export interface FetchedPetState extends PetStatePayload {
