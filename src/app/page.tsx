@@ -36,50 +36,45 @@ export default function Home() {
     if (isConnected && pubkey) loadFromNostr(pubkey);
   }, [isConnected, pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle Amber intent callbacks.
-  // Chrome on Android keeps the current tab alive when navigating to nostrsigner:,
-  // so when Amber calls back with the callbackUrl it causes a hashchange (not a full
-  // reload). We listen on both mount AND hashchange to cover both cases.
+  // Listen for Amber callback results written by /amber-result page via localStorage.
+  // The /amber-result page (a dedicated route) processes the callback and publishes,
+  // then stores the outcome here. This works whether Chrome opened it in the same tab
+  // (same-tab: localStorage.getItem on mount) or a new tab (storage event).
   useEffect(() => {
-    async function processAmberCallback() {
-      const { parseAmberCallback, clearPending, loadPending, cleanAmberUrl } = await import('@/lib/amberIntent');
-      const cb = parseAmberCallback();
-      if (!cb) return;
+    const RESULT_KEY = 'amber_publish_result';
 
-      cleanAmberUrl();
-
-      if (cb.action === 'login' && cb.pubkey) {
-        const { loginWithAmberPubkey } = await import('@/lib/nostr');
-        const user = await loginWithAmberPubkey(cb.pubkey);
-        if (user) {
-          setUser(user, 'amber');
-          setAmberToast(t.amberLoginSuccess);
-          setTimeout(() => setAmberToast(null), 3000);
+    function applyResult(raw: string | null) {
+      if (!raw) return;
+      try {
+        const result = JSON.parse(raw);
+        if (Date.now() - result.ts > 15000) return; // ignore stale
+        if (result.type === 'login') {
+          if (result.ok) {
+            setAmberToast(t.amberLoginSuccess);
+            setTimeout(() => setAmberToast(null), 3000);
+          }
+        } else if (result.type === 'sign') {
+          if (result.ok) {
+            setAmberToast(t.shareSuccess);
+            setTimeout(() => setAmberToast(null), 4000);
+          } else {
+            setAmberToast(`Error: ${result.err ?? 'publish failed'}`);
+            setTimeout(() => setAmberToast(null), 6000);
+          }
         }
-        clearPending();
-        return;
-      }
-
-      if (cb.action === 'sign' && cb.event) {
-        const pending = loadPending();
-        clearPending();
-        setAmberToast('Publicando...');
-        try {
-          const { publishSignedEvent } = await import('@/lib/nostr');
-          await publishSignedEvent(cb.event as any);
-          setAmberToast(t.shareSuccess);
-          setTimeout(() => setAmberToast(null), 4000);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          setAmberToast(`Error: ${msg}`);
-          setTimeout(() => setAmberToast(null), 6000);
-        }
-        void pending;
-      }
+        localStorage.removeItem(RESULT_KEY);
+      } catch { /* ignore */ }
     }
-    processAmberCallback();
-    window.addEventListener('hashchange', processAmberCallback);
-    return () => window.removeEventListener('hashchange', processAmberCallback);
+
+    // Pick up a result already written (same-tab: /amber-result navigated back to /)
+    applyResult(localStorage.getItem(RESULT_KEY));
+
+    // Pick up a result written by a different tab (Chrome opened /amber-result in a new tab)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === RESULT_KEY) applyResult(e.newValue);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start downloading the user's current animal GLB as soon as they're connected,

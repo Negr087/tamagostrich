@@ -47,13 +47,18 @@ export function clearPending() {
 const SIGN_HASH = '#amber-sign';
 const LOGIN_HASH = '#amber-login';
 
+// Dedicated pages for callbacks — using a DIFFERENT PATH forces Chrome to always
+// navigate (not just focus the existing tab), ensuring the callback is detected.
+const SIGN_CB_PATH = '/amber-result';
+const LOGIN_CB_PATH = '/amber-result';
+
 function origin(): string {
   return typeof window !== 'undefined' ? window.location.origin : '';
 }
 
 export function openAmberLogin() {
-  // Callback: Amber appends the pubkey → https://myapp.com/#amber-login<hex-pubkey>
-  const cb = `${origin()}/${LOGIN_HASH}`;
+  // Callback: https://myapp.com/amber-result#amber-login<hex-pubkey>
+  const cb = `${origin()}${LOGIN_CB_PATH}${LOGIN_HASH}`;
   savePending({ action: 'login', timestamp: Date.now() });
   window.location.href = `nostrsigner:?returnType=signature&type=get_public_key&callbackUrl=${encodeURIComponent(cb)}`;
 }
@@ -65,8 +70,9 @@ export function openAmberSign(unsignedEvent: object, source = 'unknown', hexPubk
   // the split. Escaping "?" as the JSON Unicode sequence ? is invisible to
   // split("?") but all JSON parsers decode it back to "?" correctly.
   const eventJson = JSON.stringify(unsignedEvent).replace(/\?/g, '\\u003F');
-  // Callback: Amber appends the signed event → https://myapp.com/#amber-sign<url-encoded-json>
-  const cb = `${origin()}/${SIGN_HASH}`;
+  // Callback: https://myapp.com/amber-result#amber-sign<url-encoded-json>
+  // Using a dedicated path forces Chrome to navigate (vs. just focusing the tab).
+  const cb = `${origin()}${SIGN_CB_PATH}${SIGN_HASH}`;
 
   let pubKeyParam = '';
   if (hexPubkey) {
