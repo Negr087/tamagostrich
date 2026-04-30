@@ -566,9 +566,13 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
 
 // Publish already-signed event (used by the Amber intent callback flow).
 export async function publishSignedEvent(signedEvent: Event): Promise<void> {
-  const pool = new SimplePool();
-  await Promise.allSettled(pool.publish(POPULAR_RELAYS, signedEvent));
-  pool.close(POPULAR_RELAYS);
+  // Use NDK to publish — it maintains persistent relay connections so the event
+  // is sent reliably even right after page load (vs a fresh SimplePool that has
+  // to establish connections first).
+  const ndk = getNDK();
+  await connectNDK();
+  const ndkEvent = new NDKEvent(ndk, signedEvent as import('@nostr-dev-kit/ndk').NostrEvent);
+  await ndkEvent.publish();
 }
 
 // Publish any event, handling both direct signers (NIP-07/nsec) and NIP-46 remote signers (Amber).

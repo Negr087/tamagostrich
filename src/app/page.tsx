@@ -36,14 +36,17 @@ export default function Home() {
     if (isConnected && pubkey) loadFromNostr(pubkey);
   }, [isConnected, pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle Amber intent callbacks: runs once on mount, processes ?amber_cb=... in URL
+  // Handle Amber intent callbacks.
+  // Chrome on Android keeps the current tab alive when navigating to nostrsigner:,
+  // so when Amber calls back with the callbackUrl it causes a hashchange (not a full
+  // reload). We listen on both mount AND hashchange to cover both cases.
   useEffect(() => {
-    async function handleAmberCallback() {
+    async function processAmberCallback() {
       const { parseAmberCallback, clearPending, loadPending, cleanAmberUrl } = await import('@/lib/amberIntent');
       const cb = parseAmberCallback();
       if (!cb) return;
 
-      cleanAmberUrl(); // remove amber params from URL immediately
+      cleanAmberUrl();
 
       if (cb.action === 'login' && cb.pubkey) {
         const { loginWithAmberPubkey } = await import('@/lib/nostr');
@@ -69,10 +72,12 @@ export default function Home() {
           setAmberToast(t.shareError);
           setTimeout(() => setAmberToast(null), 4000);
         }
-        void pending; // suppress unused warning
+        void pending;
       }
     }
-    handleAmberCallback();
+    processAmberCallback();
+    window.addEventListener('hashchange', processAmberCallback);
+    return () => window.removeEventListener('hashchange', processAmberCallback);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start downloading the user's current animal GLB as soon as they're connected,
