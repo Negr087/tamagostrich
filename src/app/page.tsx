@@ -63,14 +63,16 @@ export default function Home() {
       if (cb.action === 'sign' && cb.event) {
         const pending = loadPending();
         clearPending();
+        setAmberToast('Publicando...');
         try {
           const { publishSignedEvent } = await import('@/lib/nostr');
           await publishSignedEvent(cb.event as any);
           setAmberToast(t.shareSuccess);
-          setTimeout(() => setAmberToast(null), 3000);
-        } catch {
-          setAmberToast(t.shareError);
           setTimeout(() => setAmberToast(null), 4000);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setAmberToast(`Error: ${msg}`);
+          setTimeout(() => setAmberToast(null), 6000);
         }
         void pending;
       }
