@@ -3,12 +3,15 @@
 // Amber intent (NIP-55 / nostrsigner:) integration for Android.
 // Ref: https://github.com/greenart7c3/amber + NIP-55 spec
 //
-// URL format:
-//   nostrsigner:<urlencoded-event-json>?compressionType=none&returnType=event&type=sign_event&callbackUrl=<encoded-cb>
+// URL format Amber expects:
+//   nostrsigner:<urlencoded-event-json>?returnType=event&type=sign_event&pubKey=<npub>&callbackUrl=<encoded-cb>
 //
-// Amber appends the result value directly to callbackUrl, so the callbackUrl
-// must end with the param name and "=" (e.g. ".../?amber_cb=sign&event=").
-// Amber returns: <callbackUrl><url-encoded-result>
+// IMPORTANT: Amber parses params by splitting the decoded URI on "?" first, then "&".
+// If callbackUrl contains "?" or "&", Amber truncates it at those chars.
+// Solution: use a hash-based callback URL — "#amber-sign" has no "?" or "&".
+// Amber appends the result directly: callbackUrl + Uri.encode(result)
+// → https://myapp.com/#amber-sign<url-encoded-event-json>
+// We detect by checking window.location.hash.startsWith('#amber-sign').
 
 const PENDING_KEY = 'amber_intent_pending';
 
@@ -41,80 +44,82 @@ export function clearPending() {
   if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(PENDING_KEY);
 }
 
-function callbackBase(action: string): string {
-  if (typeof window === 'undefined') return '';
-  return `${window.location.origin}/?amber_cb=${action}`;
+const SIGN_HASH = '#amber-sign';
+const LOGIN_HASH = '#amber-login';
+
+function origin(): string {
+  return typeof window !== 'undefined' ? window.location.origin : '';
 }
 
 export function openAmberLogin() {
-  // Callback: Amber appends the pubkey value → ?amber_cb=login&pubkey=<hex>
-  const cb = callbackBase('login') + '&pubkey=';
+  // Callback: Amber appends the pubkey → https://myapp.com/#amber-login<hex-pubkey>
+  const cb = `${origin()}/${LOGIN_HASH}`;
   savePending({ action: 'login', timestamp: Date.now() });
-  window.location.href = `nostrsigner:?compressionType=none&returnType=signature&type=get_public_key&callbackUrl=${encodeURIComponent(cb)}`;
+  window.location.href = `nostrsigner:?returnType=signature&type=get_public_key&callbackUrl=${encodeURIComponent(cb)}`;
 }
 
-export function openAmberSign(unsignedEvent: object, source = 'unknown') {
-  // Event JSON goes after nostrsigner: (URL-encoded, not base64)
-  // Callback: Amber appends the signed event JSON → ?amber_cb=sign&event=<url-encoded-json>
+// hexPubkey is passed as the "pubKey" query param so Amber selects the right account.
+export function openAmberSign(unsignedEvent: object, source = 'unknown', hexPubkey?: string) {
   const eventJson = JSON.stringify(unsignedEvent);
-  const cb = callbackBase('sign') + '&event=';
+  // Callback: Amber appends the signed event → https://myapp.com/#amber-sign<url-encoded-json>
+  const cb = `${origin()}/${SIGN_HASH}`;
+
+  let pubKeyParam = '';
+  if (hexPubkey) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { nip19 } = require('nostr-tools');
+      pubKeyParam = `&pubKey=${nip19.npubEncode(hexPubkey)}`;
+    } catch {
+      pubKeyParam = `&pubKey=${hexPubkey}`;
+    }
+  }
+
   savePending({ action: 'sign', source, unsignedEvent, timestamp: Date.now() });
-  window.location.href = `nostrsigner:${encodeURIComponent(eventJson)}?compressionType=none&returnType=event&type=sign_event&callbackUrl=${encodeURIComponent(cb)}`;
+  window.location.href =
+    `nostrsigner:${encodeURIComponent(eventJson)}?returnType=event&type=sign_event${pubKeyParam}&callbackUrl=${encodeURIComponent(cb)}`;
 }
 
 export interface AmberCallbackResult {
-  action: string;
+  action: 'login' | 'sign';
   pubkey?: string;
   event?: object;
 }
 
+// Called on page load. Reads window.location.hash to detect an Amber callback.
 export function parseAmberCallback(): AmberCallbackResult | null {
   if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
-  const action = params.get('amber_cb');
-  if (!action) return null;
+  const hash = window.location.hash; // e.g. "#amber-sign%7B%22id%22...%7D"
 
-  let pubkey: string | undefined;
-  let event: object | undefined;
-
-  if (action === 'login') {
-    const raw = params.get('pubkey') ?? undefined;
-    if (raw) {
-      if (raw.startsWith('npub')) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const { nip19 } = require('nostr-tools');
-          const decoded = nip19.decode(raw);
-          pubkey = decoded.type === 'npub' ? (decoded.data as string) : raw;
-        } catch { pubkey = raw; }
-      } else {
-        pubkey = raw;
-      }
-    }
+  if (hash.startsWith(SIGN_HASH)) {
+    const raw = hash.slice(SIGN_HASH.length);
+    if (!raw) return null;
+    try {
+      const event = JSON.parse(decodeURIComponent(raw));
+      return { action: 'sign', event };
+    } catch { return null; }
   }
 
-  if (action === 'sign') {
-    // URLSearchParams already URL-decodes the value — result is plain JSON
-    const raw = params.get('event') ?? undefined;
-    if (raw) {
-      try {
-        event = JSON.parse(raw);
-      } catch {
-        // fallback: older Amber versions may base64-encode the event
-        try {
-          const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
-          event = JSON.parse(new TextDecoder().decode(bytes));
-        } catch {}
+  if (hash.startsWith(LOGIN_HASH)) {
+    const raw = hash.slice(LOGIN_HASH.length);
+    if (!raw) return null;
+    try {
+      let pubkey = decodeURIComponent(raw);
+      if (pubkey.startsWith('npub')) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { nip19 } = require('nostr-tools');
+        const decoded = nip19.decode(pubkey);
+        if (decoded.type === 'npub') pubkey = decoded.data as string;
       }
-    }
+      return { action: 'login', pubkey };
+    } catch { return null; }
   }
 
-  return { action, pubkey, event };
+  return null;
 }
 
+// Remove the amber hash from the URL without a page reload.
 export function cleanAmberUrl() {
   if (typeof window === 'undefined') return;
-  const url = new URL(window.location.href);
-  ['amber_cb', 'pubkey', 'event', 'result', 'npub'].forEach(k => url.searchParams.delete(k));
-  window.history.replaceState({}, '', url.toString());
+  window.history.replaceState({}, '', window.location.pathname + window.location.search);
 }

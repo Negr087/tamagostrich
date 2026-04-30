@@ -596,14 +596,15 @@ export async function publishEvent(params: {
   // - loginMethod is 'bunker' on Android (relay-based NIP-46 doesn't work on mobile
   //   because the browser tab suspends when switching to Amber)
   if (authState.loginMethod === 'amber' || (authState.loginMethod === 'bunker' && isAndroid())) {
-    if (!authState.profile?.pubkey) throw new Error('No pubkey available');
+    const hexPubkey = authState.profile?.pubkey;
+    if (!hexPubkey) throw new Error('No pubkey available');
     openAmberSign({
       kind: params.kind,
       content: params.content,
       tags: params.tags || [],
       created_at: Math.floor(Date.now() / 1000),
-      pubkey: authState.profile.pubkey,
-    });
+      pubkey: hexPubkey,
+    }, 'publish', hexPubkey);
     throw new AmberIntentRedirect();
   }
 
