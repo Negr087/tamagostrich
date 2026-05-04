@@ -29,7 +29,7 @@ export function getNDK(): NDK {
       explicitRelayUrls: [...POPULAR_RELAYS],
     });
     // Pre-warm: start connecting as soon as NDK is first accessed, don't wait
-    ndkConnectPromise = ndkInstance.connect(5000).then(() => ndkInstance!).catch(() => ndkInstance!);
+    ndkConnectPromise = ndkInstance.connect(2000).then(() => ndkInstance!).catch(() => ndkInstance!);
   }
   return ndkInstance;
 }
@@ -677,12 +677,13 @@ export interface FetchedPetState extends PetStatePayload {
 
 export async function fetchPetState(pubkey: string): Promise<FetchedPetState | null> {
   const ndk = getNDK();
-  // Network/timeout errors propagate so callers can distinguish "not found" (null) from "error" (throw)
-  const events = await withTimeout(
-    ndk.fetchEvents({ kinds: [30078], '#d': [PET_D_TAG], authors: [pubkey], limit: 1 }),
-    8000
+  // fetchEvent (singular) returns as soon as the first relay responds — much faster than
+  // fetchEvents which waits for all relays. Network/timeout errors propagate so callers
+  // can distinguish "not found" (null) from "error" (throw).
+  const event = await withTimeout(
+    ndk.fetchEvent({ kinds: [30078], '#d': [PET_D_TAG], authors: [pubkey] }),
+    5000
   );
-  const event = Array.from(events).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
   if (!event) return null;
   try {
     const payload = JSON.parse(event.content) as PetStatePayload;
