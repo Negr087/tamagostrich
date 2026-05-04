@@ -677,18 +677,19 @@ export interface FetchedPetState extends PetStatePayload {
 
 export async function fetchPetState(pubkey: string): Promise<FetchedPetState | null> {
   const ndk = getNDK();
+  // Network/timeout errors propagate so callers can distinguish "not found" (null) from "error" (throw)
+  const events = await withTimeout(
+    ndk.fetchEvents({ kinds: [30078], '#d': [PET_D_TAG], authors: [pubkey], limit: 1 }),
+    8000
+  );
+  const event = Array.from(events).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
+  if (!event) return null;
   try {
-    const events = await withTimeout(
-      ndk.fetchEvents({ kinds: [30078], '#d': [PET_D_TAG], authors: [pubkey], limit: 1 }),
-      8000
-    );
-    const event = Array.from(events).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
-    if (!event) return null;
     const payload = JSON.parse(event.content) as PetStatePayload;
     if (payload?.version !== 1) return null;
     return { ...payload, nostrCreatedAt: event.created_at || 0 };
   } catch {
-    return null;
+    return null; // malformed content — treat as not found
   }
 }
 

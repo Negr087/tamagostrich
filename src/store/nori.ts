@@ -47,7 +47,7 @@ interface NoriState {
 
   // Actions
   triggerAction: (action: NoriAction, detail?: string, senderPubkey?: string) => void;
-  decayStats: () => void;
+  decayStats: (allowDeath?: boolean) => void;
   revive: () => void;
   setListening: (listening: boolean) => void;
   setLastListenerSince: (t: number) => void;
@@ -233,7 +233,7 @@ export const useNoriStore = create<NoriState>()(
         useGoalsStore.getState().recordAction(action, detail);
       },
 
-      decayStats: () => {
+      decayStats: (allowDeath = true) => {
         const state = get();
         if (state.isDead) return;
         const now = Date.now();
@@ -250,7 +250,10 @@ export const useNoriStore = create<NoriState>()(
           social:    clamp(state.stats.social    - minutes * RATE),
         };
 
-        const justDied = newStats.happiness <= 0 && newStats.energy <= 0 && newStats.social <= 0;
+        // Only kill the pet when called from the active device (allowDeath=true).
+        // Catch-up decay on a cold-starting device uses allowDeath=false so it can't
+        // accidentally kill the pet that was alive on mobile and publish that dead state.
+        const justDied = allowDeath && newStats.happiness <= 0 && newStats.energy <= 0 && newStats.social <= 0;
         set({
           stats: newStats,
           lastDecayTime: now,
@@ -287,13 +290,24 @@ export const useNoriStore = create<NoriState>()(
         hasLoadedFromNostr = false;
         nip46LastPublish = 0;
         set({ isSyncingFromNostr: true });
+        // Only publish after a successful fetch — never publish stale local state
+        // when the fetch fails (network/timeout), which would overwrite mobile's correct state.
+        let shouldSync = false;
         try {
           const { fetchPetState, connectNDK } = await import('@/lib/nostr');
           await connectNDK();
-          const remote = await fetchPetState(pubkey);
+
+          let remote;
+          try {
+            remote = await fetchPetState(pubkey);
+          } catch (e) {
+            console.warn('[pet-sync] fetch failed — skipping publish to avoid overwriting mobile state:', e);
+            return; // finally still runs; shouldSync remains false
+          }
+
           if (!remote) {
             // No state on Nostr yet — publish current local state so other devices can sync
-            scheduleSync();
+            shouldSync = true;
             return;
           }
 
@@ -321,11 +335,10 @@ export const useNoriStore = create<NoriState>()(
               mood: computeMoodFromStats(remote.stats, remote.lastEventTime),
               isDead: !!remote.isDead,
             });
-            // Apply decay accumulated since last sync
-            useNoriStore.getState().decayStats();
-          } else {
-            // This device published more recently — push local state so other devices can sync
-            scheduleSync();
+            // Catch-up decay: update stats for time elapsed since last sync,
+            // but never kill the pet here — it was alive on the source device.
+            // Death from neglect can only happen on the actively-running device.
+            useNoriStore.getState().decayStats(false);
           }
           // Always merge goals — take the best of both devices regardless of which is newer
           if (remote.goals) {
@@ -348,13 +361,14 @@ export const useNoriStore = create<NoriState>()(
             app.setBodyColor(remote.appearance.bodyColor);
             if (remote.appearance.hasChosen) app.setHasChosen(true);
           }
+          shouldSync = true;
         } catch (e) {
           console.warn('[pet-sync] load failed:', e);
         } finally {
           hasLoadedFromNostr = true; // allow publishing now that remote state was fetched
           set({ isSyncingFromNostr: false });
           // Publish merged state promptly so other devices pick it up quickly
-          scheduleSync();
+          if (shouldSync) scheduleSync();
         }
       },
     }),
