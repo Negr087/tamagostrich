@@ -127,7 +127,12 @@ export function flushSync(): Promise<void> {
     syncTimer = null;
   }
   nip46LastPublish = 0; // allow one final publish regardless of rate limit (e.g. on logout)
-  return doPublish().catch(() => {});
+  // Safety cap: never block the caller (e.g. reward claiming UI) more than 10 s
+  // even if publishPetState hangs waiting for a relay on flaky mobile connections.
+  return Promise.race([
+    doPublish(),
+    new Promise<void>(resolve => setTimeout(resolve, 10000)),
+  ]).catch(() => {});
 }
 
 // Wait until any in-progress loadFromNostr has completed (up to timeoutMs).

@@ -532,7 +532,12 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
     event.content = JSON.stringify(payload);
     event.tags = [['d', PET_D_TAG]];
     try {
-      await event.publish();
+      // Timeout prevents hanging on mobile when relay connections drop —
+      // event.publish() waits for relay acknowledgment with no built-in deadline.
+      await Promise.race([
+        event.publish(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('publish timeout')), 8000)),
+      ]);
     } catch (e) {
       console.warn('[pet-sync] publish failed:', e);
     }
