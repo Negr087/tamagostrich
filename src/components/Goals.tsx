@@ -7,7 +7,7 @@ import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
 import { useLang } from '@/lib/i18n';
 import { flushSync, waitForSyncComplete, useNoriStore } from '@/store/nori';
 import { useAppearanceStore } from '@/store/appearance';
-import { isAndroid, openAmberSign } from '@/lib/amberIntent';
+import { openAmberSign } from '@/lib/amberIntent';
 import ShareModal from './ShareModal';
 
 type ClaimState = 'idle' | 'loading' | 'success' | 'error' | 'no_lud16';
@@ -130,13 +130,6 @@ export default function Goals() {
         await flushSync(); // update claimedRewards on Nostr
       }
       setClaimStates(s => ({ ...s, [milestoneId]: 'success' }));
-
-      // For Amber: auto-sync after success so claimedRewards is updated on Nostr.
-      // Brief delay so the user sees "success" before being redirected to Amber.
-      if (isAmberUser) {
-        await new Promise(r => setTimeout(r, 1500));
-        handleAmberSync();
-      }
     } catch {
       setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));
       setErrorMsgs(s => ({ ...s, [milestoneId]: t.goalsRewardError }));
@@ -203,7 +196,7 @@ export default function Goals() {
         </div>
 
         {/* ── Amber sync notice ───────────────────────────────────── */}
-        {loginMethod === 'amber' && isAndroid() && (
+        {loginMethod === 'amber' && (
           <div className="lc-card p-4 mb-6 flex items-center gap-3" style={{ borderColor: 'rgba(180,249,83,0.3)' }}>
             <span className="text-2xl shrink-0">🔄</span>
             <div className="flex-1 min-w-0">
