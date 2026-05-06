@@ -7,13 +7,14 @@ import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
 import { useLang } from '@/lib/i18n';
 import { flushSync, waitForSyncComplete, useNoriStore } from '@/store/nori';
 import { useAppearanceStore } from '@/store/appearance';
+import { isAndroid, openAmberSign } from '@/lib/amberIntent';
 import ShareModal from './ShareModal';
 
 type ClaimState = 'idle' | 'loading' | 'success' | 'error' | 'no_lud16';
 
 export default function Goals() {
   const { xp, level, unlockedAchievements, streakDays, claimedRewards, markRewardClaimed } = useGoalsStore();
-  const { profile } = useAuthStore();
+  const { profile, loginMethod } = useAuthStore();
   const { stats } = useNoriStore();
   const { animalType } = useAppearanceStore();
   const { t, lang } = useLang();
@@ -25,28 +26,71 @@ export default function Goals() {
   const [errorMsgs, setErrorMsgs] = useState<Record<string, string>>({});
   const [showShare, setShowShare] = useState(false);
 
+  // Amber intent users can't publish in the background — signing requires switching to the
+  // Amber app. This function builds the current pet state event and opens Amber to sign it.
+  // amber-result/page.tsx publishes the signed event and redirects back to /#goals.
+  function handleAmberSync() {
+    if (!profile?.pubkey) return;
+    const noriState = useNoriStore.getState();
+    const goalsState = useGoalsStore.getState();
+    const appState = useAppearanceStore.getState();
+    const payload = {
+      version: 1 as const,
+      isDead: noriState.isDead,
+      stats: noriState.stats,
+      lastEventTime: noriState.lastEventTime,
+      lastDecayTime: noriState.lastDecayTime,
+      activityLog: noriState.activityLog.slice(0, 20),
+      goals: {
+        xp: goalsState.xp,
+        level: goalsState.level,
+        unlockedAchievements: goalsState.unlockedAchievements,
+        actionCounts: goalsState.actionCounts,
+        lastActiveDay: goalsState.lastActiveDay,
+        streakDays: goalsState.streakDays,
+        claimedRewards: goalsState.claimedRewards,
+      },
+      appearance: {
+        animalType: appState.animalType,
+        bodyColor: appState.bodyColor,
+        hasChosen: appState.hasChosen,
+      },
+    };
+    openAmberSign(
+      { kind: 30078, content: JSON.stringify(payload), tags: [['d', 'tamagostrich-pet-state']], created_at: Math.floor(Date.now() / 1000), pubkey: profile.pubkey },
+      'pet_state',
+      profile.pubkey,
+    );
+  }
+
   async function handleClaim(milestoneId: string) {
     if (!profile?.pubkey) return;
     setClaimStates(s => ({ ...s, [milestoneId]: 'loading' }));
     setErrorMsgs(s => ({ ...s, [milestoneId]: '' }));
 
-    // Wait for any in-progress Nostr sync before publishing, so we send the
-    // merged state (not stale local state from before the relay fetch completes).
-    await waitForSyncComplete();
+    const isAmberUser = loginMethod === 'amber';
 
-    // Check that we actually have a signer before trying to publish.
-    // If sessionStorage was cleared (tab closed/reopened on mobile), the nsec
-    // signer is lost — flushSync would silently skip and the server would find
-    // the old Nostr event with stale streakDays/level.
-    const { getNDK, getNip46Session } = await import('@/lib/nostr');
-    const hasSigner = !!getNDK().signer || !!getNip46Session();
-    if (!hasSigner) {
-      setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));
-      setErrorMsgs(s => ({ ...s, [milestoneId]: 'Sesión sin signer activo. Cerrá sesión y volvé a conectarte para sincronizar tu progreso.' }));
-      return;
+    if (!isAmberUser) {
+      // Wait for any in-progress Nostr sync before publishing, so we send the
+      // merged state (not stale local state from before the relay fetch completes).
+      await waitForSyncComplete();
+
+      // Check that we actually have a signer before trying to publish.
+      // If sessionStorage was cleared (tab closed/reopened on mobile), the nsec
+      // signer is lost — flushSync would silently skip and the server would find
+      // the old Nostr event with stale streakDays/level.
+      const { getNDK, getNip46Session } = await import('@/lib/nostr');
+      const hasSigner = !!getNDK().signer || !!getNip46Session();
+      if (!hasSigner) {
+        setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));
+        setErrorMsgs(s => ({ ...s, [milestoneId]: 'Sesión sin signer activo. Cerrá sesión y volvé a conectarte para sincronizar tu progreso.' }));
+        return;
+      }
+
+      await flushSync();
     }
-
-    await flushSync();
+    // Amber users: no background signer — skip flushSync (it's a no-op anyway).
+    // The server validates against whatever was last synced via the Amber "Sync" button.
 
     const doAttempt = async () => {
       const res = await fetch('/api/claim-reward', {
@@ -59,8 +103,10 @@ export default function Goals() {
     };
 
     try {
-      // First attempt after 3 s propagation wait
-      await new Promise(r => setTimeout(r, 3000));
+      if (!isAmberUser) {
+        // Wait 3 s for relay propagation after flushSync
+        await new Promise(r => setTimeout(r, 3000));
+      }
       let { res, data } = await doAttempt();
 
       // If the relay returned stale data (streak/level too low), retry once after 5 more s
@@ -80,8 +126,17 @@ export default function Goals() {
       }
 
       markRewardClaimed(milestoneId);
-      await flushSync(); // update claimedRewards on Nostr
+      if (!isAmberUser) {
+        await flushSync(); // update claimedRewards on Nostr
+      }
       setClaimStates(s => ({ ...s, [milestoneId]: 'success' }));
+
+      // For Amber: auto-sync after success so claimedRewards is updated on Nostr.
+      // Brief delay so the user sees "success" before being redirected to Amber.
+      if (isAmberUser) {
+        await new Promise(r => setTimeout(r, 1500));
+        handleAmberSync();
+      }
     } catch {
       setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));
       setErrorMsgs(s => ({ ...s, [milestoneId]: t.goalsRewardError }));
@@ -146,6 +201,23 @@ export default function Goals() {
             </div>
           )}
         </div>
+
+        {/* ── Amber sync notice ───────────────────────────────────── */}
+        {loginMethod === 'amber' && isAndroid() && (
+          <div className="lc-card p-4 mb-6 flex items-center gap-3" style={{ borderColor: 'rgba(180,249,83,0.3)' }}>
+            <span className="text-2xl shrink-0">🔄</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-lc-white">{t.amberSyncTitle}</div>
+              <div className="text-xs text-lc-muted mt-0.5 leading-relaxed">{t.amberSyncDesc}</div>
+            </div>
+            <button
+              onClick={handleAmberSync}
+              className="lc-pill-primary px-4 py-2 text-xs font-bold whitespace-nowrap shrink-0"
+            >
+              {t.amberSyncBtn}
+            </button>
+          </div>
+        )}
 
         {/* ── Sats rewards ─────────────────────────────────────────── */}
         <div className="mb-8">

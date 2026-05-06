@@ -96,6 +96,12 @@ export const T = {
     goalsRewardNoLud16: 'Agregá un lightning address a tu perfil Nostr para recibir sats',
     goalsRewardError: 'No se pudo procesar. Intentá de nuevo.',
 
+    // Amber sync (Goals page)
+    amberSyncTitle: 'Sincronizar con Nostr',
+    amberSyncDesc: 'Amber requiere aprobación manual para publicar tu progreso. Sincronizá antes de reclamar recompensas.',
+    amberSyncBtn: 'Sincronizar',
+    amberSyncSuccess: '¡Estado sincronizado! Ahora podés reclamar tus recompensas.',
+
     // Badges
     badgesTitle: 'Insignias',
     badgesSubtitle: 'Insignias Nostr otorgadas a tu perfil (NIP-58)',
@@ -241,6 +247,12 @@ export const T = {
     goalsRewardLocked: (lvl: number) => `Unlocks at level ${lvl}`,
     goalsRewardNoLud16: 'Add a lightning address to your Nostr profile to receive sats',
     goalsRewardError: 'Could not process. Please try again.',
+
+    // Amber sync (Goals page)
+    amberSyncTitle: 'Sync with Nostr',
+    amberSyncDesc: 'Amber requires manual approval to publish your progress. Sync before claiming rewards.',
+    amberSyncBtn: 'Sync',
+    amberSyncSuccess: 'State synced! You can now claim your rewards.',
 
     // Badges
     badgesTitle: 'Badges',

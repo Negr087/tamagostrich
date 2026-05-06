@@ -48,10 +48,20 @@ export default function AmberResult() {
       if (cb.action === 'sign' && cb.event) {
         clearPending();
         setStatus('Publicando en Nostr...');
+        const signedEvent = cb.event as { kind?: number; [key: string]: unknown };
+        const isPetState = signedEvent.kind === 30078;
         try {
-          await publishSignedEvent(cb.event as Parameters<typeof publishSignedEvent>[0]);
-          localStorage.setItem(AMBER_RESULT_KEY, JSON.stringify({ type: 'sign', ok: true, ts: Date.now() }));
-          setStatus('¡Publicado!');
+          await publishSignedEvent(signedEvent as Parameters<typeof publishSignedEvent>[0]);
+
+          if (isPetState) {
+            // Update lastNostrPublish so loadFromNostr on the next session uses the correct
+            // timestamp — preventing a stale local publish from overwriting this fresh state.
+            const { useNoriStore } = await import('@/store/nori');
+            useNoriStore.setState({ lastNostrPublish: Math.floor(Date.now() / 1000) });
+          }
+
+          localStorage.setItem(AMBER_RESULT_KEY, JSON.stringify({ type: 'sign', ok: true, isPetState, ts: Date.now() }));
+          setStatus(isPetState ? '¡Sincronizado!' : '¡Publicado!');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           localStorage.setItem(AMBER_RESULT_KEY, JSON.stringify({ type: 'sign', ok: false, err: msg, ts: Date.now() }));
@@ -59,7 +69,8 @@ export default function AmberResult() {
         }
         // Short delay so user sees the status before redirect
         await new Promise(r => setTimeout(r, 800));
-        router.replace('/');
+        // For pet state syncs (from Goals page), redirect back to Goals
+        router.replace(isPetState ? '/#goals' : '/');
       }
     }
 
