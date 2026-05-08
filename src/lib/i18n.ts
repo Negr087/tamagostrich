@@ -101,6 +101,7 @@ export const T = {
     amberSyncDesc: 'Amber requiere aprobación manual para publicar tu progreso. Sincronizá antes de reclamar recompensas.',
     amberSyncBtn: 'Sincronizar',
     amberSyncSuccess: '¡Estado sincronizado! Ahora podés reclamar tus recompensas.',
+    amberClaimNoSync: 'Primero sincronizá tu progreso usando el botón "Sincronizar" de arriba.',
 
     // Badges
     badgesTitle: 'Insignias',
@@ -253,6 +254,7 @@ export const T = {
     amberSyncDesc: 'Amber requires manual approval to publish your progress. Sync before claiming rewards.',
     amberSyncBtn: 'Sync',
     amberSyncSuccess: 'State synced! You can now claim your rewards.',
+    amberClaimNoSync: 'First sync your progress using the "Sync" button above.',
 
     // Badges
     badgesTitle: 'Badges',

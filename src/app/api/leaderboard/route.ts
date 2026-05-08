@@ -58,7 +58,7 @@ export async function GET() {
   const filter = {
     kinds: [30078],
     '#d': ['tamagostrich-pet-state'],
-    limit: 200,
+    limit: 500,
   };
 
   const results = await Promise.all(relays.map((r) => fetchFromRelay(r, filter)));

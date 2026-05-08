@@ -84,7 +84,7 @@ async function doPublish() {
   const { useAppearanceStore } = await import('@/store/appearance');
   const goals = useGoalsStore.getState();
   const app = useAppearanceStore.getState();
-  await publishPetState({
+  const published = await publishPetState({
     version: 1,
     isDead: state.isDead,
     stats: state.stats,
@@ -106,10 +106,13 @@ async function doPublish() {
       hasChosen: app.hasChosen,
     },
   });
-  // Record publish time so other devices know who published last
-  const publishedAt = Math.floor(Date.now() / 1000);
-  useNoriStore.setState({ lastNostrPublish: publishedAt });
-  if (isNip46) nip46LastPublish = publishedAt;
+  // Only stamp the publish time when the event actually reached a relay.
+  // A false stamp would make remoteIsNewer=false on next load, causing stale state.
+  if (published) {
+    const publishedAt = Math.floor(Date.now() / 1000);
+    useNoriStore.setState({ lastNostrPublish: publishedAt });
+    if (isNip46) nip46LastPublish = publishedAt;
+  }
 }
 
 function scheduleSync() {

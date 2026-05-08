@@ -523,7 +523,7 @@ export interface PetStatePayload {
 
 const PET_D_TAG = 'tamagostrich-pet-state';
 
-export async function publishPetState(payload: PetStatePayload): Promise<void> {
+export async function publishPetState(payload: PetStatePayload): Promise<boolean> {
   const ndk = getNDK();
 
   if (ndk.signer) {
@@ -538,19 +538,19 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
         event.publish(),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('publish timeout')), 8000)),
       ]);
+      return true;
     } catch (e) {
       console.warn('[pet-sync] publish failed:', e);
+      return false;
     }
-    return;
   }
 
-  // NIP-46 fallback: sign via remote signer (Amber) when ndk.signer is not set.
-  // This happens when logging in via QR code — loginWithRemoteSigner doesn't set ndk.signer.
+  // NIP-46 fallback: sign via remote signer (QR bunker) when ndk.signer is not set.
   if (nip46Session) {
     try {
       const { useAuthStore } = await import('@/store/auth');
       const pubkey = useAuthStore.getState().profile?.pubkey;
-      if (!pubkey) return;
+      if (!pubkey) return false;
       const signed = await signEventViaNip46({
         kind: 30078,
         pubkey,
@@ -558,15 +558,21 @@ export async function publishPetState(payload: PetStatePayload): Promise<void> {
         tags: [['d', PET_D_TAG]],
         content: JSON.stringify(payload),
       } as UnsignedEvent);
-      if (!signed) { console.warn('[pet-sync] NIP-46 sign timed out'); return; }
+      if (!signed) { console.warn('[pet-sync] NIP-46 sign timed out'); return false; }
       const pool = new SimplePool();
       await Promise.allSettled(pool.publish(POPULAR_RELAYS, signed));
       pool.close(POPULAR_RELAYS);
       console.log('[pet-sync] NIP-46 publish ok');
+      return true;
     } catch (e) {
       console.warn('[pet-sync] NIP-46 publish failed:', e);
+      return false;
     }
   }
+
+  // Amber intent users: publishing requires the user to approve in the Amber app.
+  // The Goals page has a dedicated "Sincronizar" button for this.
+  return false;
 }
 
 // Publish already-signed event (used by the Amber intent callback flow).

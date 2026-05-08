@@ -109,11 +109,19 @@ export default function Goals() {
       }
       let { res, data } = await doAttempt();
 
-      // If the relay returned stale data (streak/level too low), retry once after 5 more s
+      // Amber users who haven't synced yet: show targeted guidance instead of raw server error
+      if (isAmberUser && !res.ok && data.error?.includes('No pet state')) {
+        setClaimStates(s => ({ ...s, [milestoneId]: 'error' }));
+        setErrorMsgs(s => ({ ...s, [milestoneId]: t.amberClaimNoSync }));
+        return;
+      }
+
+      // Relay returned stale/missing data — retry once after 5 s.
+      // Covers: streak/level too low (propagation lag) and no pet state yet (slow relay).
       const isStale = !res.ok && res.status === 403 &&
-        (data.error?.includes('streak') || data.error?.includes('level')) &&
+        (data.error?.includes('streak') || data.error?.includes('level') || data.error?.includes('No pet state')) &&
         !data.error?.includes('already');
-      if (isStale) {
+      if (!isAmberUser && isStale) {
         await new Promise(r => setTimeout(r, 5000));
         ({ res, data } = await doAttempt());
       }
