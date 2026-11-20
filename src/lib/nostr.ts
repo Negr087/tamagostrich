@@ -1,7 +1,10 @@
 import NDK, { NDKEvent, NDKUser, NDKNip07Signer, NDKPrivateKeySigner } from '@nostr-dev-kit/ndk';
-import { nip19, nip44, nip04, finalizeEvent, SimplePool } from 'nostr-tools';
+import { nip19, nip44, nip04, finalizeEvent, verifyEvent, SimplePool } from 'nostr-tools';
+import { bech32 } from '@scure/base';
 import type { UnsignedEvent, Event } from 'nostr-tools';
 import { isAndroid, openAmberSign } from '@/lib/amberIntent';
+import { bolt11ToSats } from '@/lib/bolt11';
+import { debug } from '@/lib/debug';
 
 // Popular relays (high availability)
 const POPULAR_RELAYS = [
@@ -513,6 +516,7 @@ export interface PetStatePayload {
     lastActiveDay: string | null;
     streakDays: number;
     claimedRewards?: string[];
+    deaths?: number;
   };
   appearance?: {
     animalType: string;
@@ -562,7 +566,7 @@ export async function publishPetState(payload: PetStatePayload): Promise<boolean
       const pool = new SimplePool();
       await Promise.allSettled(pool.publish(POPULAR_RELAYS, signed));
       pool.close(POPULAR_RELAYS);
-      console.log('[pet-sync] NIP-46 publish ok');
+      debug('[pet-sync] NIP-46 publish ok');
       return true;
     } catch (e) {
       console.warn('[pet-sync] NIP-46 publish failed:', e);
@@ -715,25 +719,7 @@ export interface ZapReceived {
   createdAt: number;
 }
 
-// Decode amount (in sats) from a bolt11 invoice's human-readable prefix.
-// Format: ln<network><amount><multiplier>1...
-// Multipliers relative to 1 BTC (= 100_000_000 sats):
-//   m (milli)  = 0.001 BTC = 100_000 sats
-//   u (micro)  = 0.000001 BTC = 100 sats
-//   n (nano)   = 0.000000001 BTC = 0.1 sats
-//   p (pico)   = 0.000000000001 BTC = 0.0001 sats
-export function bolt11ToSats(bolt11: string): number {
-  const m = bolt11.toLowerCase().match(/^ln[a-z]+?(\d+)([munp])?1/);
-  if (!m) return 0;
-  const v = parseInt(m[1], 10);
-  switch (m[2]) {
-    case 'm': return Math.round(v * 100_000);
-    case 'u': return Math.round(v * 100);
-    case 'n': return Math.round(v * 0.1);
-    case 'p': return Math.round(v * 0.0001);
-    default:  return v * 100_000_000; // no multiplier = whole BTC (extremely rare)
-  }
-}
+export { bolt11ToSats } from '@/lib/bolt11';
 
 // Parse a kind-9735 zap receipt: extract sender pubkey and amount in sats.
 // Priority: description tag (zap request) → P tag; amount tag → bolt11.
@@ -746,6 +732,7 @@ export function parseZapReceipt(event: NDKEvent): ZapParsed {
   let senderPubkey: string | undefined;
   let amountSats = 0;
   let message: string | undefined;
+  let requestedSats = 0;
 
   try {
     const descTag = event.tags.find((t) => t[0] === 'description');
@@ -754,7 +741,7 @@ export function parseZapReceipt(event: NDKEvent): ZapParsed {
       senderPubkey = zapReq.pubkey;
       message = zapReq.content || undefined;
       const amountTag = (zapReq.tags as string[][])?.find((t) => t[0] === 'amount');
-      if (amountTag) amountSats = Math.round(parseInt(amountTag[1], 10) / 1000);
+      if (amountTag) requestedSats = Math.round(parseInt(amountTag[1], 10) / 1000);
     }
   } catch { /* malformed description */ }
 
@@ -763,13 +750,104 @@ export function parseZapReceipt(event: NDKEvent): ZapParsed {
     senderPubkey = event.tags.find((t) => t[0] === 'P')?.[1];
   }
 
-  // Fallback for amount: decode bolt11 invoice
-  if (amountSats <= 0) {
-    const bolt11 = event.tags.find((t) => t[0] === 'bolt11')?.[1];
-    if (bolt11) amountSats = bolt11ToSats(bolt11);
-  }
+  // The bolt11 invoice is what was actually paid; the zap request's `amount` tag is
+  // chosen by the sender and only used when the invoice can't be decoded.
+  const bolt11 = event.tags.find((t) => t[0] === 'bolt11')?.[1];
+  if (bolt11) amountSats = bolt11ToSats(bolt11);
+  if (amountSats <= 0) amountSats = Number.isFinite(requestedSats) ? requestedSats : 0;
 
   return { senderPubkey, amountSats, message };
+}
+
+// ─── NIP-57 zap receipt verification ────────────────────────────────
+// Anyone can publish a kind-9735 event tagging you. A receipt is only genuine when it is
+// signed by the `nostrPubkey` advertised by YOUR lightning address' LNURL endpoint, and its
+// embedded zap request targets you.
+
+const zapperCache = new Map<string, { pubkey: string | null; at: number }>();
+const ZAPPER_CACHE_MS = 30 * 60 * 1000;
+
+function lnurlEndpoint(lud16?: string, lud06?: string): string | null {
+  if (lud16) {
+    const m = lud16.trim().toLowerCase().match(/^([a-z0-9._+-]+)@([a-z0-9.-]+\.[a-z]{2,})$/);
+    if (m) return `https://${m[2]}/.well-known/lnurlp/${encodeURIComponent(m[1])}`;
+  }
+  if (lud06) {
+    try {
+      const { words } = bech32.decode(lud06.toLowerCase() as `${string}1${string}`, 2000);
+      const url = new TextDecoder().decode(bech32.fromWords(words));
+      if (url.startsWith('https://')) return url;
+    } catch { /* invalid lnurl */ }
+  }
+  return null;
+}
+
+export interface LnurlPayData {
+  callback: string;
+  minSendable: number;  // msats
+  maxSendable: number;  // msats
+  allowsNostr: boolean;
+  nostrPubkey?: string;
+  endpoint: string;
+}
+
+// LNURL-pay metadata for a lightning address (lud16) or bech32 LNURL (lud06).
+export async function fetchLnurlPayData(lud16?: string, lud06?: string): Promise<LnurlPayData> {
+  const endpoint = lnurlEndpoint(lud16, lud06);
+  if (!endpoint) throw new Error('No lightning address on this profile');
+  const res = await fetch(endpoint, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`Lightning address error (${res.status})`);
+  const d = await res.json() as Record<string, unknown>;
+  if (d.status === 'ERROR') throw new Error(String(d.reason ?? 'LNURL error'));
+  if (typeof d.callback !== 'string' || !d.callback.startsWith('https://')) throw new Error('Invalid LNURL callback');
+  return {
+    callback: d.callback,
+    minSendable: Number(d.minSendable ?? 1000),
+    maxSendable: Number(d.maxSendable ?? 1e12),
+    allowsNostr: d.allowsNostr === true,
+    nostrPubkey: typeof d.nostrPubkey === 'string' ? d.nostrPubkey : undefined,
+    endpoint,
+  };
+}
+
+export function lnurlEncode(url: string): string {
+  return bech32.encode('lnurl', bech32.toWords(new TextEncoder().encode(url)), 2000);
+}
+
+// Returns the pubkey allowed to sign zap receipts for this user, or null if unknown.
+// Failures are cached briefly so a flaky LNURL server doesn't block zaps for long.
+export async function getZapperPubkey(lud16?: string, lud06?: string): Promise<string | null> {
+  const endpoint = lnurlEndpoint(lud16, lud06);
+  if (!endpoint) return null;
+  const cached = zapperCache.get(endpoint);
+  if (cached && Date.now() - cached.at < (cached.pubkey ? ZAPPER_CACHE_MS : 60_000)) return cached.pubkey;
+
+  let pubkey: string | null = null;
+  try {
+    const res = await fetch(endpoint, { signal: AbortSignal.timeout(6000) });
+    if (res.ok) {
+      const data = (await res.json()) as { allowsNostr?: boolean; nostrPubkey?: string };
+      if (data.allowsNostr && typeof data.nostrPubkey === 'string' && /^[0-9a-f]{64}$/.test(data.nostrPubkey)) {
+        pubkey = data.nostrPubkey;
+      }
+    }
+  } catch { /* network / CORS error */ }
+  zapperCache.set(endpoint, { pubkey, at: Date.now() });
+  return pubkey;
+}
+
+export function isValidZapReceipt(event: NDKEvent, recipientPubkey: string, zapperPubkey: string): boolean {
+  if (event.kind !== 9735 || event.pubkey !== zapperPubkey) return false;
+  if (!event.tags.some((t) => t[0] === 'p' && t[1] === recipientPubkey)) return false;
+  try {
+    const descTag = event.tags.find((t) => t[0] === 'description');
+    if (!descTag) return false;
+    const zapReq = JSON.parse(descTag[1]) as Event;
+    if (zapReq.kind !== 9734 || !verifyEvent(zapReq)) return false;
+    return zapReq.tags.some((t) => t[0] === 'p' && t[1] === recipientPubkey);
+  } catch {
+    return false;
+  }
 }
 
 export async function fetchZapsReceived(pubkey: string, limit = 100): Promise<ZapReceived[]> {
@@ -852,4 +930,95 @@ export function formatTimestamp(timestamp: number): string {
   if (days < 7) return `${days}d`;
   
   return date.toLocaleDateString();
+}
+
+// ─── NIP-05 verification (client) ─────────────────────────────────
+const nip05Cache = new Map<string, Promise<boolean>>();
+
+// True when <name>@<domain> resolves to `pubkey` via /.well-known/nostr.json (NIP-05).
+export function verifyNip05(nip05: string | undefined, pubkey: string): Promise<boolean> {
+  if (!nip05) return Promise.resolve(false);
+  const m = nip05.trim().toLowerCase().match(/^([a-z0-9._-]+)@([a-z0-9.-]+\.[a-z]{2,})$/);
+  if (!m) return Promise.resolve(false);
+  const key = `${m[0]}|${pubkey}`;
+  let cached = nip05Cache.get(key);
+  if (!cached) {
+    cached = fetch(`https://${m[2]}/.well-known/nostr.json?name=${encodeURIComponent(m[1])}`, {
+      signal: AbortSignal.timeout(6000),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { names?: Record<string, string> } | null) => d?.names?.[m[1]]?.toLowerCase() === pubkey)
+      .catch(() => false);
+    nip05Cache.set(key, cached);
+  }
+  return cached;
+}
+
+// Display form of a NIP-05: "_@domain" is shown as just "domain".
+export function formatNip05(nip05: string): string {
+  return nip05.startsWith('_@') ? nip05.slice(2) : nip05;
+}
+
+// ─── Generic signing with the current signer ───────────────────────
+export class SigningUnavailableError extends Error {
+  constructor() { super('signing_unavailable'); }
+}
+
+// Sign (without publishing) using whatever signer the session has.
+// Amber intent sessions can't sign in the background → SigningUnavailableError.
+export async function signWithCurrentSigner(
+  template: { kind: number; content: string; tags: string[][] },
+  onPending?: () => void,
+): Promise<Event> {
+  const ndk = getNDK();
+  const created_at = Math.floor(Date.now() / 1000);
+  if (ndk.signer) {
+    const event = new NDKEvent(ndk);
+    event.kind = template.kind;
+    event.content = template.content;
+    event.tags = template.tags;
+    event.created_at = created_at;
+    onPending?.();
+    await event.sign();
+    return event.rawEvent() as unknown as Event;
+  }
+  if (nip46Session) {
+    const { useAuthStore } = await import('@/store/auth');
+    const pubkey = useAuthStore.getState().profile?.pubkey;
+    if (!pubkey) throw new Error('No pubkey available');
+    const signed = await signEventViaNip46({ ...template, created_at, pubkey } as UnsignedEvent, onPending);
+    if (!signed) throw new Error('Signing timed out or was rejected');
+    return signed;
+  }
+  throw new SigningUnavailableError();
+}
+
+export function getPopularRelays(): string[] {
+  return [...POPULAR_RELAYS];
+}
+
+// Resolve user input (npub / nprofile / hex / NIP-05) to a hex pubkey.
+export async function resolvePubkey(input: string): Promise<string | null> {
+  const q = input.trim().replace(/^nostr:/i, '');
+  if (/^[0-9a-f]{64}$/i.test(q)) return q.toLowerCase();
+  if (/^(npub|nprofile)1/i.test(q)) {
+    try {
+      const d = nip19.decode(q.toLowerCase());
+      if (d.type === 'npub') return d.data;
+      if (d.type === 'nprofile') return d.data.pubkey;
+    } catch { return null; }
+  }
+  const m = q.toLowerCase().match(/^(?:([a-z0-9._-]+)@)?([a-z0-9.-]+\.[a-z]{2,})$/);
+  if (m) {
+    const name = m[1] ?? '_';
+    try {
+      const res = await fetch(`https://${m[2]}/.well-known/nostr.json?name=${encodeURIComponent(name)}`, {
+        signal: AbortSignal.timeout(6000),
+      });
+      const data = (await res.json()) as { names?: Record<string, string> };
+      const pk = data.names?.[name]?.toLowerCase();
+      return pk && /^[0-9a-f]{64}$/.test(pk) ? pk : null;
+    } catch { return null; }
+  }
+  return null;
 }

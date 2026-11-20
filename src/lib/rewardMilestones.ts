@@ -1,3 +1,8 @@
+// Master switch for sats rewards (paid from the operator's NWC wallet).
+// Off by default: set NEXT_PUBLIC_REWARDS_ENABLED=true (and fund the wallet) to turn them on.
+// NEXT_PUBLIC_ so the same flag hides the UI and blocks the API.
+export const REWARDS_ENABLED = process.env.NEXT_PUBLIC_REWARDS_ENABLED === 'true';
+
 // Milestone rewards — shared between API route and UI.
 // Each milestone has either requiredLevel OR requiredStreak (not both).
 export interface RewardMilestone {

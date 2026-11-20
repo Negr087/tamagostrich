@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useGoalsStore } from './goals';
+import type { PetStatePayload } from '@/lib/nostr';
+import { debug } from '@/lib/debug';
 
 export type NoriMood = 'happy' | 'excited' | 'resting' | 'sleeping' | 'sad' | 'social';
 
@@ -44,6 +46,10 @@ interface NoriState {
   // Unix timestamp (seconds) of the last successful publish to Nostr.
   // Used to compare against the remote event's created_at to decide which state is newer.
   lastNostrPublish: number;
+  // Web of Trust: interactions ignored because the sender is outside the user's graph,
+  // and how many accounts the user follows (null until loaded).
+  untrustedIgnored: number;
+  wotFollows: number | null;
 
   // Actions
   triggerAction: (action: NoriAction, detail?: string, senderPubkey?: string) => void;
@@ -51,9 +57,14 @@ interface NoriState {
   revive: () => void;
   setListening: (listening: boolean) => void;
   setLastListenerSince: (t: number) => void;
+  recordUntrusted: () => void;
+  setWotFollows: (n: number) => void;
   computeMood: () => NoriMood;
   loadFromNostr: (pubkey: string) => Promise<void>;
 }
+
+// Passive decay: 100 points in 72 h without activity.
+export const DECAY_PER_MINUTE = 100 / 4320;
 
 function clamp(val: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, val));
@@ -72,19 +83,14 @@ let nip46LastPublish = 0; // unix seconds of last NIP-46 publish this session
 // Debounced publish — fires 10s after the last stats change
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
-async function doPublish() {
+// Snapshot of everything that is synced to Nostr (NIP-78). Shared by the background
+// publisher and the Amber manual-sync flow so both always send the same shape.
+export async function buildPetStatePayload(): Promise<PetStatePayload> {
   const state = useNoriStore.getState();
-  if (state.isSyncingFromNostr || !hasLoadedFromNostr) return;
-  const { publishPetState, getNDK, getNip46Session } = await import('@/lib/nostr');
-
-  const isNip46 = !getNDK().signer && !!getNip46Session();
-  const nowSecs = Math.floor(Date.now() / 1000);
-  if (isNip46 && nip46LastPublish > 0 && nowSecs - nip46LastPublish < NIP46_MIN_INTERVAL) return;
-
   const { useAppearanceStore } = await import('@/store/appearance');
   const goals = useGoalsStore.getState();
   const app = useAppearanceStore.getState();
-  const published = await publishPetState({
+  return {
     version: 1,
     isDead: state.isDead,
     stats: state.stats,
@@ -99,13 +105,26 @@ async function doPublish() {
       lastActiveDay: goals.lastActiveDay,
       streakDays: goals.streakDays,
       claimedRewards: goals.claimedRewards,
+      deaths: goals.deaths,
     },
     appearance: {
       animalType: app.animalType,
       bodyColor: app.bodyColor,
       hasChosen: app.hasChosen,
     },
-  });
+  };
+}
+
+async function doPublish() {
+  const state = useNoriStore.getState();
+  if (state.isSyncingFromNostr || !hasLoadedFromNostr) return;
+  const { publishPetState, getNDK, getNip46Session } = await import('@/lib/nostr');
+
+  const isNip46 = !getNDK().signer && !!getNip46Session();
+  const nowSecs = Math.floor(Date.now() / 1000);
+  if (isNip46 && nip46LastPublish > 0 && nowSecs - nip46LastPublish < NIP46_MIN_INTERVAL) return;
+
+  const published = await publishPetState(await buildPetStatePayload());
   // Only stamp the publish time when the event actually reached a relay.
   // A false stamp would make remoteIsNewer=false on next load, causing stale state.
   if (published) {
@@ -113,6 +132,20 @@ async function doPublish() {
     useNoriStore.setState({ lastNostrPublish: publishedAt });
     if (isNip46) nip46LastPublish = publishedAt;
   }
+}
+
+// Retry a failed initial fetch with backoff, as long as the same user is still logged in.
+let loadRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let loadRetryDelay = 15000;
+function scheduleLoadRetry(pubkey: string) {
+  if (loadRetryTimer) clearTimeout(loadRetryTimer);
+  loadRetryTimer = setTimeout(async () => {
+    loadRetryTimer = null;
+    const { useAuthStore } = await import('@/store/auth');
+    if (useAuthStore.getState().profile?.pubkey !== pubkey) return;
+    loadRetryDelay = Math.min(loadRetryDelay * 2, 5 * 60000);
+    useNoriStore.getState().loadFromNostr(pubkey);
+  }, loadRetryDelay);
 }
 
 function scheduleSync() {
@@ -205,6 +238,8 @@ export const useNoriStore = create<NoriState>()(
       isDead: false,
       lastListenerSince: 0,
       lastNostrPublish: 0,
+      untrustedIgnored: 0,
+      wotFollows: null,
 
       triggerAction: (action, detail, senderPubkey) => {
         const state = get();
@@ -249,7 +284,7 @@ export const useNoriStore = create<NoriState>()(
         if (elapsed < 60000) return; // mínimo 1 minuto entre llamadas
 
         // 100 pts en exactamente 72h sin actividad → 100/4320 pts por minuto
-        const RATE = 100 / 4320;
+        const RATE = DECAY_PER_MINUTE;
         const minutes = elapsed / 60000; // fracción exacta, sin floor
 
         const newStats: NoriStats = {
@@ -287,6 +322,8 @@ export const useNoriStore = create<NoriState>()(
 
       setListening: (listening) => set({ isListening: listening }),
       setLastListenerSince: (t) => set({ lastListenerSince: t }),
+      recordUntrusted: () => set((s) => ({ untrustedIgnored: s.untrustedIgnored + 1 })),
+      setWotFollows: (n) => set({ wotFollows: n }),
 
       computeMood: () => {
         const state = get();
@@ -297,10 +334,11 @@ export const useNoriStore = create<NoriState>()(
         // Reset sync flags so each login session gets a fresh publish cycle
         hasLoadedFromNostr = false;
         nip46LastPublish = 0;
+        if (loadRetryTimer) { clearTimeout(loadRetryTimer); loadRetryTimer = null; }
         set({ isSyncingFromNostr: true });
         // Only publish after a successful fetch — never publish stale local state
         // when the fetch fails (network/timeout), which would overwrite mobile's correct state.
-        let shouldSync = false;
+        let fetched = false;
         try {
           const { fetchPetState, connectNDK } = await import('@/lib/nostr');
           await connectNDK();
@@ -309,13 +347,15 @@ export const useNoriStore = create<NoriState>()(
           try {
             remote = await fetchPetState(pubkey);
           } catch (e) {
-            console.warn('[pet-sync] fetch failed — skipping publish to avoid overwriting mobile state:', e);
-            return; // finally still runs; shouldSync remains false
+            console.warn('[pet-sync] fetch failed — publishing disabled until a retry succeeds:', e);
+            scheduleLoadRetry(pubkey);
+            return; // finally still runs; fetched remains false
           }
+          fetched = true;
+          loadRetryDelay = 15000;
 
           if (!remote) {
             // No state on Nostr yet — publish current local state so other devices can sync
-            shouldSync = true;
             return;
           }
 
@@ -326,7 +366,7 @@ export const useNoriStore = create<NoriState>()(
           const lastPublish = get().lastNostrPublish;
           const remoteIsNewer = remote.nostrCreatedAt > lastPublish;
 
-          console.log('[pet-sync] remote createdAt:', remote.nostrCreatedAt,
+          debug('[pet-sync] remote createdAt:', remote.nostrCreatedAt,
             '| local lastNostrPublish:', lastPublish,
             '| remoteIsNewer:', remoteIsNewer);
 
@@ -350,10 +390,10 @@ export const useNoriStore = create<NoriState>()(
           }
           // Always merge goals — take the best of both devices regardless of which is newer
           if (remote.goals) {
-            console.log('[pet-sync] remote goals — xp:', remote.goals.xp, 'level:', remote.goals.level,
+            debug('[pet-sync] remote goals — xp:', remote.goals.xp, 'level:', remote.goals.level,
               'local xp:', useGoalsStore.getState().xp);
             useGoalsStore.getState().loadFromSync(remote.goals);
-            console.log('[pet-sync] after merge — xp:', useGoalsStore.getState().xp, 'level:', useGoalsStore.getState().level);
+            debug('[pet-sync] after merge — xp:', useGoalsStore.getState().xp, 'level:', useGoalsStore.getState().level);
           } else {
             console.warn('[pet-sync] remote event has no goals field');
           }
@@ -369,14 +409,15 @@ export const useNoriStore = create<NoriState>()(
             app.setBodyColor(remote.appearance.bodyColor);
             if (remote.appearance.hasChosen) app.setHasChosen(true);
           }
-          shouldSync = true;
         } catch (e) {
           console.warn('[pet-sync] load failed:', e);
+          if (!fetched) scheduleLoadRetry(pubkey);
         } finally {
-          hasLoadedFromNostr = true; // allow publishing now that remote state was fetched
+          // Allow publishing only once the remote state was actually fetched.
+          hasLoadedFromNostr = fetched;
           set({ isSyncingFromNostr: false });
           // Publish merged state promptly so other devices pick it up quickly
-          if (shouldSync) scheduleSync();
+          if (fetched) scheduleSync();
         }
       },
     }),
@@ -390,6 +431,7 @@ export const useNoriStore = create<NoriState>()(
         lastListenerSince: state.lastListenerSince,
         isDead: state.isDead,
         lastNostrPublish: state.lastNostrPublish,
+        untrustedIgnored: state.untrustedIgnored,
       }),
     }
   )

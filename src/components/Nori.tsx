@@ -15,6 +15,10 @@ import { useLang } from '@/lib/i18n';
 import { LightningAddress } from '@getalby/lightning-tools';
 import PetSelector from './PetSelector';
 import ShareModal from './ShareModal';
+import { usePetViewer } from '@/store/petViewer';
+
+// Lightning address that receives the 21-sat revival payment (must support LNURL-verify).
+const REVIVE_LN_ADDRESS = process.env.NEXT_PUBLIC_REVIVE_LN_ADDRESS || 'negr0@blink.sv';
 
 // ─── TYPES ───────────────────────────────────────────────────────────
 
@@ -116,8 +120,14 @@ interface SenderProfile { name?: string; picture?: string }
 function SenderDisplay({ pubkey, profile }: { pubkey: string; profile?: SenderProfile }) {
   const shortNpub = nip19.npubEncode(pubkey).slice(0, 9) + '…';
   const displayName = profile?.name || shortNpub;
+  const openPet = usePetViewer(s => s.open);
   return (
-    <div className="flex items-center gap-1.5 shrink-0 max-w-[110px]">
+    <button
+      type="button"
+      onClick={() => openPet(pubkey)}
+      className="flex items-center gap-1.5 shrink-0 max-w-[110px] hover:opacity-80 transition text-left"
+      title={displayName}
+    >
       {profile?.picture ? (
         <img src={profile.picture} alt="" className="w-5 h-5 rounded-full object-cover shrink-0"
           style={{ background: '#262626' }}
@@ -129,7 +139,7 @@ function SenderDisplay({ pubkey, profile }: { pubkey: string; profile?: SenderPr
         </div>
       )}
       <span className="text-xs font-medium truncate" style={{ color: '#e2e8f0' }}>{displayName}</span>
-    </div>
+    </button>
   );
 }
 
@@ -547,7 +557,7 @@ export default function NoriTamagotchi() {
     setPaymentReceived(false);
     reviveInvoiceRef.current = null;
     try {
-      const ln = new LightningAddress('negr0@blink.sv');
+      const ln = new LightningAddress(REVIVE_LN_ADDRESS);
       await ln.fetch();
       const invoice = await ln.requestInvoice({ satoshi: 21, comment: 'Tamagostrich revival' });
       reviveInvoiceRef.current = invoice;
@@ -807,10 +817,45 @@ export default function NoriTamagotchi() {
                 ))
               )}
             </div>
+            <WotNotice />
           </div>
 
         </div>
       </div>
     </>
+  );
+}
+
+// Web of Trust status: explains why some interactions don't feed the pet.
+function WotNotice() {
+  const { lang } = useLang();
+  const untrustedIgnored = useNoriStore(s => s.untrustedIgnored);
+  const wotFollows = useNoriStore(s => s.wotFollows);
+  if (wotFollows === null) return null;
+  const es = lang === 'es';
+  const noFollows = wotFollows === 0;
+  return (
+    <div
+      className="mt-3 rounded-xl px-3 py-2.5 text-[11px] leading-relaxed flex items-start gap-2"
+      style={noFollows
+        ? { background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)', color: '#fdba74' }
+        : { background: 'rgba(180,249,83,0.05)', border: '1px solid rgba(180,249,83,0.15)', color: '#a3a3a3' }}
+    >
+      <span className="text-sm leading-none">🛡️</span>
+      <span>
+        {noFollows
+          ? (es
+            ? 'Todavía no seguís a nadie: solo cuentan las interacciones de tu red de confianza (gente que seguís y a quienes ellos siguen). ¡Seguí gente para que tu mascota crezca!'
+            : "You don't follow anyone yet: only interactions from your web of trust count (people you follow and who they follow). Follow people so your pet can grow!")
+          : (es
+            ? `Red de confianza activa · ${wotFollows} seguidos + sus seguidos.`
+            : `Web of trust active · ${wotFollows} follows + their follows.`)}
+        {untrustedIgnored > 0 && (
+          <> {es
+            ? `${untrustedIgnored} interacciones de cuentas fuera de tu red fueron ignoradas.`
+            : `${untrustedIgnored} interactions from accounts outside your network were ignored.`}</>
+        )}
+      </span>
+    </div>
   );
 }

@@ -18,6 +18,7 @@ const Profile     = dynamic(() => import('@/components/Profile'),     { ssr: fal
 const Badges      = dynamic(() => import('@/components/Badges'),      { ssr: false });
 const Goals       = dynamic(() => import('@/components/Goals'),       { ssr: false });
 const Leaderboard = dynamic(() => import('@/components/Leaderboard'), { ssr: false });
+const PetProfileModal = dynamic(() => import('@/components/PetProfileModal'), { ssr: false });
 
 const VALID_SECTIONS: Section[] = ['nori', 'profile', 'badges', 'goals', 'ranking'];
 
@@ -125,6 +126,7 @@ export default function Home() {
       ) : activeSection === 'ranking' ? (
         <Leaderboard />
       ) : null}
+      {isConnected && <PetProfileModal />}
     </main>
   );
 }

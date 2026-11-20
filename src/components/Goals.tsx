@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGoalsStore, ACHIEVEMENTS, levelProgress, MAX_LEVEL } from '@/store/goals';
 import { useAuthStore } from '@/store/auth';
-import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
+import { REWARD_MILESTONES, REWARDS_ENABLED } from '@/lib/rewardMilestones';
 import { useLang } from '@/lib/i18n';
-import { flushSync, waitForSyncComplete, useNoriStore } from '@/store/nori';
+import { flushSync, waitForSyncComplete, useNoriStore, buildPetStatePayload } from '@/store/nori';
 import { useAppearanceStore } from '@/store/appearance';
 import { openAmberSign } from '@/lib/amberIntent';
 import ShareModal from './ShareModal';
+import IdentityChecklist from './IdentityChecklist';
+import NostrBadgesPanel from './NostrBadgesPanel';
 
 type ClaimState = 'idle' | 'loading' | 'success' | 'error' | 'no_lud16';
 
@@ -26,36 +28,27 @@ export default function Goals() {
   const [errorMsgs, setErrorMsgs] = useState<Record<string, string>>({});
   const [showShare, setShowShare] = useState(false);
 
+  // The server ledger is the source of truth for paid rewards. Pull it so the UI is correct
+  // even when the local/Nostr state missed the update (e.g. Amber users, another device).
+  useEffect(() => {
+    if (!profile?.pubkey) return;
+    let cancelled = false;
+    fetch(`/api/claim-reward?pubkey=${profile.pubkey}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: { claimed?: string[] } | null) => {
+        if (cancelled || !data?.claimed) return;
+        data.claimed.forEach(id => markRewardClaimed(id));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [profile?.pubkey, markRewardClaimed]);
+
   // Amber intent users can't publish in the background — signing requires switching to the
   // Amber app. This function builds the current pet state event and opens Amber to sign it.
   // amber-result/page.tsx publishes the signed event and redirects back to /#goals.
-  function handleAmberSync() {
+  async function handleAmberSync() {
     if (!profile?.pubkey) return;
-    const noriState = useNoriStore.getState();
-    const goalsState = useGoalsStore.getState();
-    const appState = useAppearanceStore.getState();
-    const payload = {
-      version: 1 as const,
-      isDead: noriState.isDead,
-      stats: noriState.stats,
-      lastEventTime: noriState.lastEventTime,
-      lastDecayTime: noriState.lastDecayTime,
-      activityLog: noriState.activityLog.slice(0, 20),
-      goals: {
-        xp: goalsState.xp,
-        level: goalsState.level,
-        unlockedAchievements: goalsState.unlockedAchievements,
-        actionCounts: goalsState.actionCounts,
-        lastActiveDay: goalsState.lastActiveDay,
-        streakDays: goalsState.streakDays,
-        claimedRewards: goalsState.claimedRewards,
-      },
-      appearance: {
-        animalType: appState.animalType,
-        bodyColor: appState.bodyColor,
-        hasChosen: appState.hasChosen,
-      },
-    };
+    const payload = await buildPetStatePayload();
     openAmberSign(
       { kind: 30078, content: JSON.stringify(payload), tags: [['d', 'tamagostrich-pet-state']], created_at: Math.floor(Date.now() / 1000), pubkey: profile.pubkey },
       'pet_state',
@@ -98,7 +91,7 @@ export default function Goals() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pubkey: profile.pubkey, milestone: milestoneId }),
       });
-      const data = await res.json() as { error?: string; success?: boolean };
+      const data = await res.json() as { error?: string; success?: boolean; pending?: boolean; message?: string };
       return { res, data };
     };
 
@@ -124,6 +117,14 @@ export default function Goals() {
       if (!isAmberUser && isStale) {
         await new Promise(r => setTimeout(r, 5000));
         ({ res, data } = await doAttempt());
+      }
+
+      // Already paid according to the server ledger — reflect it locally.
+      if (res.status === 409) {
+        markRewardClaimed(milestoneId);
+        if (!isAmberUser) await flushSync();
+        setClaimStates(s => ({ ...s, [milestoneId]: 'success' }));
+        return;
       }
 
       if (!res.ok) {
@@ -220,8 +221,8 @@ export default function Goals() {
           </div>
         )}
 
-        {/* ── Sats rewards ─────────────────────────────────────────── */}
-        <div className="mb-8">
+        {/* ── Sats rewards (hidden while REWARDS_ENABLED is off) ────── */}
+        {REWARDS_ENABLED && <div className="mb-8">
           <div className="flex items-center gap-2 mb-1">
             <h2 className="text-lg font-bold text-lc-white">{t.goalsRewardsTitle}</h2>
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(180,249,83,0.12)', color: '#b4f953', border: '1px solid rgba(180,249,83,0.25)' }}>
@@ -229,6 +230,8 @@ export default function Goals() {
             </span>
           </div>
           <p className="text-xs text-lc-muted mb-4">{t.goalsRewardsSubtitle}</p>
+
+          {profile?.pubkey && <IdentityChecklist pubkey={profile.pubkey} />}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {REWARD_MILESTONES.map((m) => {
@@ -309,7 +312,10 @@ export default function Goals() {
               );
             })}
           </div>
-        </div>
+        </div>}
+
+        {/* ── NIP-58 badges ───────────────────────────────────────── */}
+        <NostrBadgesPanel />
 
         {/* ── Achievements ─────────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-4">

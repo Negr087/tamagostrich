@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import LoginModal from './LoginModal';
 import { useLang } from '@/lib/i18n';
-import { REWARD_MILESTONES } from '@/lib/rewardMilestones';
+import { REWARD_MILESTONES, REWARDS_ENABLED } from '@/lib/rewardMilestones';
 import { MAX_LEVEL } from '@/store/goals';
 
 const GRADIENT_TEXT: React.CSSProperties = {
@@ -176,10 +176,14 @@ export default function LandingPage() {
               },
               {
                 emoji: '🏆',
-                titleEs: 'Niveles y sats reales',
-                titleEn: 'Levels & real sats',
-                descEs:  'Subí de nivel, mantené rachas y desbloqueá logros. Hay 5 hitos con premios reales en sats vía Lightning.',
-                descEn:  'Level up, keep streaks and unlock achievements. There are 5 milestones with real sats rewards via Lightning.',
+                titleEs: REWARDS_ENABLED ? 'Niveles y sats reales' : 'Niveles y badges',
+                titleEn: REWARDS_ENABLED ? 'Levels & real sats' : 'Levels & badges',
+                descEs:  REWARDS_ENABLED
+                  ? `Subí de nivel, mantené rachas y desbloqueá logros. Hay ${REWARD_MILESTONES.length} hitos con premios reales en sats vía Lightning.`
+                  : 'Subí de nivel, mantené rachas y desbloqueá logros que se convierten en badges NIP-58 verificables en tu perfil.',
+                descEn:  REWARDS_ENABLED
+                  ? `Level up, keep streaks and unlock achievements. There are ${REWARD_MILESTONES.length} milestones with real sats rewards via Lightning.`
+                  : 'Level up, keep streaks and unlock achievements that become verifiable NIP-58 badges on your profile.',
               },
             ].map((f) => (
               <div
@@ -196,7 +200,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── SATS REWARDS ───────────────────────────────────────── */}
-        <section className="max-w-xl mx-auto px-6 pb-20">
+        {REWARDS_ENABLED && <section className="max-w-xl mx-auto px-6 pb-20">
           <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: '#b4f953' }}>
             {es ? 'Premios en sats' : 'Sats rewards'}
           </p>
@@ -241,7 +245,7 @@ export default function LandingPage() {
               ? 'Pagado automáticamente a tu lightning address (lud16) al reclamar'
               : 'Automatically paid to your lightning address (lud16) on claim'}
           </p>
-        </section>
+        </section>}
 
         {/* ── HOW IT WORKS ───────────────────────────────────────── */}
         <section className="max-w-2xl mx-auto px-6 pb-20 text-center">

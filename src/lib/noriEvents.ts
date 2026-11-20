@@ -1,6 +1,7 @@
-import { getNDK, connectNDK, addUserRelays, parseZapReceipt } from '@/lib/nostr';
+import { connectNDK, addUserRelays, parseZapReceipt, getZapperPubkey, isValidZapReceipt } from '@/lib/nostr';
 import { useNoriStore, NoriAction } from '@/store/nori';
 import { NDKEvent, NDKSubscription } from '@nostr-dev-kit/ndk';
+import { getWebOfTrust } from '@/lib/wot';
 import { nip19 } from 'nostr-tools';
 
 let subscription: NDKSubscription | null = null;
@@ -69,6 +70,34 @@ export function startNoriListener(pubkey: string) {
 
     if (sessionId !== mySession) return;
 
+    // NIP-57: resolve which pubkey is allowed to sign zap receipts for this user
+    // (the `nostrPubkey` of their lightning address). Fake receipts are ignored.
+    // Memoized: one profile fetch per session; retried on the next zap if it failed.
+    let zapperPromise: Promise<string | null> | null = null;
+    const resolveZapper = (): Promise<string | null> => {
+      if (!zapperPromise) {
+        zapperPromise = (async () => {
+          try {
+            const profile = await Promise.race([
+              ndk.getUser({ pubkey }).fetchProfile(),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+            ]);
+            return await getZapperPubkey(
+              profile?.lud16 as string | undefined,
+              profile?.lud06 as string | undefined,
+            );
+          } catch {
+            return null;
+          }
+        })().then((zapper) => {
+          if (!zapper) zapperPromise = null;
+          return zapper;
+        });
+      }
+      return zapperPromise;
+    };
+    resolveZapper(); // warm up before the first receipt arrives
+
     // Cargar seguidores actuales para no notificar falsamente los que ya seguían.
     // Timeout generoso (12s) para no perder seguidores por relay lento.
     try {
@@ -114,6 +143,21 @@ export function startNoriListener(pubkey: string) {
 
     const seenEvents = new Set<string>();
 
+    // Web of Trust: interactions from outside the user's graph don't feed the pet.
+    const wot = getWebOfTrust(ndk, pubkey);
+    wot.followCount().then((n) => {
+      if (sessionId === mySession) useNoriStore.getState().setWotFollows(n);
+    });
+
+    // Fire `action` only if `sender` is trusted; otherwise count it as ignored.
+    const triggerIfTrusted = (action: NoriAction, detail: string | undefined, sender: string | undefined) => {
+      wot.isTrusted(sender).then((trusted) => {
+        if (sessionId !== mySession) return;
+        if (trusted) useNoriStore.getState().triggerAction(action, detail, sender);
+        else useNoriStore.getState().recordUntrusted();
+      });
+    };
+
     subscription.on('event', (event: NDKEvent) => {
       if (sessionId !== mySession) return;
 
@@ -125,15 +169,23 @@ export function startNoriListener(pubkey: string) {
 
       switch (event.kind) {
         case 9735: {
-          const { senderPubkey, amountSats } = parseZapReceipt(event);
-          const detail = amountSats > 0 ? `${amountSats} sats` : undefined;
-          trigger('zap_received', detail, senderPubkey);
+          // Resolved lazily per receipt; getZapperPubkey caches the LNURL lookup.
+          resolveZapper().then((zapper) => {
+            if (sessionId !== mySession) return;
+            if (!zapper || !isValidZapReceipt(event, pubkey, zapper)) {
+              console.warn('[nori] ignoring unverified zap receipt', event.id);
+              return;
+            }
+            const { senderPubkey, amountSats } = parseZapReceipt(event);
+            const detail = amountSats > 0 ? `${amountSats} sats` : undefined;
+            triggerIfTrusted('zap_received', detail, senderPubkey);
+          });
           break;
         }
 
         case 7: {
           const content = event.content || '❤️';
-          trigger('reaction_received', content, event.pubkey);
+          triggerIfTrusted('reaction_received', content, event.pubkey);
           break;
         }
 
@@ -146,12 +198,12 @@ export function startNoriListener(pubkey: string) {
           if (knownFollowers.has(event.pubkey)) break;
           knownFollowers.add(event.pubkey);
           persistFollowers(); // remember this person across reconnects
-          trigger('new_follower', undefined, event.pubkey);
+          triggerIfTrusted('new_follower', undefined, event.pubkey);
           break;
         }
 
         case 6: {
-          trigger('repost_received', undefined, event.pubkey);
+          triggerIfTrusted('repost_received', undefined, event.pubkey);
           break;
         }
 
@@ -159,7 +211,7 @@ export function startNoriListener(pubkey: string) {
           if (event.pubkey === pubkey) {
             trigger('note_published', undefined);
           } else {
-            trigger('mention_received', undefined, event.pubkey);
+            triggerIfTrusted('mention_received', undefined, event.pubkey);
           }
           break;
         }

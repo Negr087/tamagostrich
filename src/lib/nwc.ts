@@ -1,8 +1,27 @@
 import WebSocket from 'ws';
 import { nip04, finalizeEvent } from 'nostr-tools';
+import { debug } from '@/lib/debug';
 
 function hexToBytes(hex: string): Uint8Array {
   return new Uint8Array(hex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
+}
+
+// The broad fallback subscription receives responses to ANY request from this app.
+// Only accept a response if it references our request id, or carries no `e` tag at all
+// (non-compliant wallets). Anything else belongs to a concurrent request.
+function isResponseTo(ev: Record<string, unknown>, requestId: string): boolean {
+  const tags = (ev.tags as string[][] | undefined) ?? [];
+  const eTags = tags.filter((t) => t[0] === 'e');
+  return eTags.length === 0 || eTags.some((t) => t[1] === requestId);
+}
+
+// Thrown by payInvoiceViaNwc. `maybePaid` is true when the request reached the wallet but
+// no definitive answer came back — the payment may have gone through, so don't retry blindly.
+export class NwcPaymentError extends Error {
+  constructor(message: string, readonly maybePaid: boolean) {
+    super(message);
+    this.name = 'NwcPaymentError';
+  }
 }
 
 interface NwcConfig {
@@ -25,6 +44,7 @@ interface AttemptResult {
   ok: boolean;
   error?: string;
   delivered: boolean;
+  walletRejected?: boolean; // the wallet explicitly answered with an error
 }
 
 function wsAttempt(
@@ -76,7 +96,7 @@ function wsAttempt(
       if (sendRequest) {
         ws.send(JSON.stringify(['EVENT', reqEvent]));
         delivered = true; // optimistic until relay sends OK false
-        console.log('[nwc] event sent, id:', reqEvent.id);
+        debug('[nwc] event sent, id:', reqEvent.id);
       }
     });
 
@@ -93,7 +113,7 @@ function wsAttempt(
             delivered = false;
             settle({ ok: false, error: `Relay rejected payment event: ${reason}`, delivered: false });
           } else {
-            console.log('[nwc] relay accepted event — waiting for wallet response');
+            debug('[nwc] relay accepted event — waiting for wallet response');
           }
           return;
         }
@@ -114,17 +134,19 @@ function wsAttempt(
         if (type !== 'EVENT' || (msg[2] as Record<string, unknown>)?.kind !== 23195) return;
 
         const ev = msg[2] as Record<string, unknown>;
+        if (ev.pubkey !== walletPubkey || !isResponseTo(ev, reqEvent.id)) return;
         const decrypted = await nip04.decrypt(secret, walletPubkey, ev.content as string);
         const response = JSON.parse(decrypted) as Record<string, unknown>;
+        if (response.result_type && response.result_type !== 'pay_invoice') return;
 
         if ((response.result as Record<string, unknown>)?.preimage) {
-          console.log('[nwc] payment confirmed by wallet');
+          debug('[nwc] payment confirmed by wallet');
           settle({ ok: true, delivered });
         } else {
           const errMsg = (response.error as Record<string, unknown>)?.message as string
             ?? 'Payment rejected by wallet';
           console.error('[nwc] wallet error:', errMsg);
-          settle({ ok: false, error: errMsg, delivered });
+          settle({ ok: false, error: errMsg, delivered, walletRejected: !!response.error });
         }
       } catch (e: unknown) {
         settle({ ok: false, error: `NWC error: ${e instanceof Error ? e.message : String(e)}`, delivered });
@@ -141,97 +163,6 @@ function wsAttempt(
   });
 }
 
-// General-purpose NWC command sender — used for make_invoice and lookup_invoice.
-async function sendNwcCommand(
-  method: string,
-  params: Record<string, unknown>,
-  nwcString: string,
-  timeoutMs = 12000,
-): Promise<Record<string, unknown>> {
-  const { walletPubkey, relayUrl, secret } = parseNwcString(nwcString);
-  const secretBytes = hexToBytes(secret);
-
-  const encrypted = await nip04.encrypt(
-    secret, walletPubkey,
-    JSON.stringify({ method, params }),
-  );
-  const reqEvent = finalizeEvent(
-    { kind: 23194, created_at: Math.floor(Date.now() / 1000), tags: [['p', walletPubkey]], content: encrypted },
-    secretBytes,
-  );
-
-  return new Promise((resolve, reject) => {
-    let ws: WebSocket;
-    try { ws = new WebSocket(relayUrl); } catch (e) { reject(e); return; }
-
-    let settled = false;
-    const done = (result: Record<string, unknown> | null, err?: string) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try { ws.terminate(); } catch {}
-      err ? reject(new Error(err)) : resolve(result!);
-    };
-
-    const timer = setTimeout(() => done(null, 'NWC timeout'), timeoutMs);
-
-    ws.on('open', () => {
-      const since = reqEvent.created_at - 1;
-      ws.send(JSON.stringify(['REQ', 'nwc-r', { kinds: [23195], '#e': [reqEvent.id], authors: [walletPubkey], limit: 1 }]));
-      ws.send(JSON.stringify(['REQ', 'nwc-r2', { kinds: [23195], authors: [walletPubkey], since, limit: 5 }]));
-      ws.send(JSON.stringify(['EVENT', reqEvent]));
-    });
-
-    ws.on('message', async (data) => {
-      try {
-        const msg = JSON.parse(data.toString()) as unknown[];
-        if (msg[0] !== 'EVENT' || (msg[2] as Record<string, unknown>)?.kind !== 23195) return;
-        const ev = msg[2] as Record<string, unknown>;
-        const decrypted = await nip04.decrypt(secret, walletPubkey, ev.content as string);
-        const response = JSON.parse(decrypted) as {
-          result?: Record<string, unknown>;
-          error?: { message?: string };
-        };
-        if (response.error) done(null, response.error.message ?? 'NWC wallet error');
-        else done(response.result ?? {});
-      } catch (e) {
-        done(null, e instanceof Error ? e.message : String(e));
-      }
-    });
-
-    ws.on('error', (err) => done(null, err.message));
-    ws.on('close', () => done(null, 'NWC relay connection closed'));
-  });
-}
-
-export async function makeInvoiceViaNwc(
-  amountSats: number,
-  description: string,
-  nwcString: string,
-): Promise<{ invoice: string; paymentHash: string }> {
-  const result = await sendNwcCommand(
-    'make_invoice',
-    { amount: amountSats * 1000, description, expiry: 3600 },
-    nwcString,
-  );
-  const invoice = result.invoice as string;
-  const paymentHash = result.payment_hash as string;
-  if (!invoice || !paymentHash) throw new Error('Wallet returned invalid make_invoice response');
-  return { invoice, paymentHash };
-}
-
-export async function lookupInvoiceViaNwc(
-  paymentHash: string,
-  nwcString: string,
-): Promise<{ paid: boolean }> {
-  try {
-    const result = await sendNwcCommand('lookup_invoice', { payment_hash: paymentHash }, nwcString, 8000);
-    return { paid: !!(result.settled_at || result.preimage) };
-  } catch {
-    return { paid: false };
-  }
-}
-
 export async function payInvoiceViaNwc(invoice: string, nwcString: string): Promise<void> {
   const { walletPubkey, relayUrl, secret } = parseNwcString(nwcString);
   const secretBytes = hexToBytes(secret);
@@ -246,25 +177,23 @@ export async function payInvoiceViaNwc(invoice: string, nwcString: string): Prom
     secretBytes,
   );
 
-  console.log('[nwc] paying invoice via relay:', relayUrl);
-  console.log('[nwc] wallet pubkey:', walletPubkey);
+  debug('[nwc] paying invoice via relay:', relayUrl);
+  debug('[nwc] wallet pubkey:', walletPubkey);
 
   // Primary attempt: send payment and wait for confirmation
   const first = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, true, 12000);
-  console.log('[nwc] primary result — ok:', first.ok, '| delivered:', first.delivered, '| error:', first.error);
+  debug('[nwc] primary result — ok:', first.ok, '| delivered:', first.delivered, '| error:', first.error);
   if (first.ok) return;
+  if (first.walletRejected) throw new NwcPaymentError(first.error ?? 'Payment rejected by wallet', false);
+  if (!first.delivered) throw new NwcPaymentError(first.error ?? 'Payment request not delivered', false);
 
-  // If event reached relay, poll briefly for a delayed wallet response
-  if (first.delivered) {
-    await new Promise((r) => setTimeout(r, 2500));
-    const poll = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, false, 6000);
-    console.log('[nwc] poll result — ok:', poll.ok, '| error:', poll.error);
-    if (poll.ok) return;
-    // Propagate real wallet rejections (not just timeouts/network gaps)
-    if (poll.error && !poll.error.includes('not found') && !poll.error.includes('timeout') && !poll.error.includes('closed')) {
-      throw new Error(poll.error);
-    }
-  }
+  // Event reached the relay but no answer yet — poll briefly for a delayed wallet response
+  await new Promise((r) => setTimeout(r, 2500));
+  const poll = await wsAttempt(reqEvent, relayUrl, walletPubkey, secret, false, 6000);
+  debug('[nwc] poll result — ok:', poll.ok, '| error:', poll.error);
+  if (poll.ok) return;
+  if (poll.walletRejected) throw new NwcPaymentError(poll.error ?? 'Payment rejected by wallet', false);
 
-  throw new Error(first.error ?? 'Payment failed');
+  // The wallet may still be paying (or already paid) — outcome unknown.
+  throw new NwcPaymentError(first.error ?? 'Payment outcome unknown', true);
 }

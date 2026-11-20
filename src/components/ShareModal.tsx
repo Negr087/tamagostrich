@@ -7,6 +7,7 @@ import { useLang } from '@/lib/i18n';
 import { useAuthStore } from '@/store/auth';
 import { ANIMAL_META } from '@/lib/petModels';
 import type { AnimalType } from '@/lib/petModels';
+import IdentityCard from './IdentityCard';
 
 interface Props {
   isOpen: boolean;
@@ -52,6 +53,7 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [amberPending, setAmberPending] = useState(false);
+  const [tab, setTab] = useState<'note' | 'card'>('note');
 
   useEffect(() => {
     if (!isOpen) { setStatus('idle'); setErrorMsg(''); setAmberPending(false); return; }
@@ -103,7 +105,7 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md bg-lc-dark border border-lc-border rounded-2xl overflow-hidden shadow-2xl">
+      <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto bg-lc-dark border border-lc-border rounded-2xl overflow-hidden shadow-2xl">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-lc-border">
@@ -118,9 +120,29 @@ export default function ShareModal({ isOpen, onClose, level, streakDays, happine
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-1 px-5 pt-4">
+          {(['note', 'card'] as const).map(id => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className="px-3 py-1.5 rounded-full text-xs font-bold transition"
+              style={tab === id
+                ? { background: 'rgba(180,249,83,0.15)', color: '#b4f953', border: '1px solid rgba(180,249,83,0.35)' }
+                : { color: '#a3a3a3', border: '1px solid #262626' }}
+            >
+              {id === 'note'
+                ? (lang === 'es' ? '📝 Nota' : '📝 Note')
+                : (lang === 'es' ? '🪪 Tarjeta de identidad' : '🪪 Identity card')}
+            </button>
+          ))}
+        </div>
+
         {/* Body */}
         <div className="p-5 space-y-4">
-          {status === 'success' ? (
+          {tab === 'card' ? (
+            <IdentityCard />
+          ) : status === 'success' ? (
             <div className="text-center py-6 space-y-3">
               <div className="text-5xl">🎉</div>
               <p className="font-semibold text-lc-white">{t.shareSuccess}</p>

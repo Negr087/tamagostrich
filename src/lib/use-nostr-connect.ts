@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { generateSecretKey, getPublicKey, finalizeEvent, nip44, nip04, SimplePool } from "nostr-tools";
+import { debug } from '@/lib/debug';
 
 interface NostrConnectState {
   uri: string | null;
@@ -103,7 +104,7 @@ export function useNostrConnect(relays: string[]) {
       return false;
     }
 
-    console.log("[NIP-46] Decrypted (NIP-" + (dec.usedNip44 ? "44" : "04") + "):", dec.text);
+    debug("[NIP-46] Decrypted (NIP-" + (dec.usedNip44 ? "44" : "04") + "):", dec.text);
 
     let message: any;
     try {
@@ -140,7 +141,7 @@ export function useNostrConnect(relays: string[]) {
         secretBytes
       );
       await Promise.allSettled(pool.current.publish(relaysToUse, ackEvent));
-      console.log("[NIP-46] ACK sent");
+      debug("[NIP-46] ACK sent");
 
     } else if (
       pendingGetPubkeyIdRef.current &&
@@ -151,7 +152,7 @@ export function useNostrConnect(relays: string[]) {
       // Response to our get_public_key request — real user pubkey
       userPubkey = message.result;
       pendingGetPubkeyIdRef.current = null;
-      console.log("[NIP-46] Got real user pubkey:", userPubkey);
+      debug("[NIP-46] Got real user pubkey:", userPubkey);
 
     } else if (typeof message.result === "string" && message.result === secret && !pendingGetPubkeyIdRef.current) {
       // Primal format: {id:"...", result:secret} — bunker key, NOT the user pubkey
@@ -171,15 +172,15 @@ export function useNostrConnect(relays: string[]) {
         secretBytes
       );
       await Promise.allSettled(pool.current.publish(relaysToUse, reqEvent));
-      console.log("[NIP-46] Primal connect accepted, sent get_public_key request");
+      debug("[NIP-46] Primal connect accepted, sent get_public_key request");
       return false;
 
     } else {
-      console.log("[NIP-46] Unknown message format:", JSON.stringify(message));
+      debug("[NIP-46] Unknown message format:", JSON.stringify(message));
       return false;
     }
 
-    console.log("[NIP-46] Connected! User pubkey:", userPubkey);
+    debug("[NIP-46] Connected! User pubkey:", userPubkey);
     connectedRef.current = true;
     stopPolling();
     setState(prev => ({
@@ -207,7 +208,7 @@ export function useNostrConnect(relays: string[]) {
         relaysToUse,
         { kinds: [24133], "#p": [pubkey], since } as any
       );
-      if (events.length > 0) console.log("[NIP-46] Poll found", events.length, "event(s)");
+      if (events.length > 0) debug("[NIP-46] Poll found", events.length, "event(s)");
       for (const event of events) {
         if (connectedRef.current) return;
         const ok = await processEvent(event, pubkey, secretBytes, secret, relaysToUse);
@@ -237,7 +238,7 @@ export function useNostrConnect(relays: string[]) {
     }).catch(() => {});
 
     pollIntervalRef.current = setInterval(pollOnce, POLL_INTERVAL_MS);
-    console.log("[NIP-46] Polling every", POLL_INTERVAL_MS, "ms on relays:", relaysToUse);
+    debug("[NIP-46] Polling every", POLL_INTERVAL_MS, "ms on relays:", relaysToUse);
   }, [processEvent, pollOnce, stopPolling]);
 
   const generateConnectionUri = useCallback(() => {
@@ -262,7 +263,7 @@ export function useNostrConnect(relays: string[]) {
     params.append("url", typeof window !== "undefined" ? window.location.origin : "");
 
     const uri = `nostrconnect://${pubkey}?${params.toString()}`;
-    console.log("[NIP-46] Generated URI:", uri);
+    debug("[NIP-46] Generated URI:", uri);
 
     const now = Math.floor(Date.now() / 1000);
     listenStartedAt.current = now;
@@ -276,7 +277,7 @@ export function useNostrConnect(relays: string[]) {
     const handle = () => {
       if (document.visibilityState === "visible") {
         if (!connectedRef.current && clientPubkey.current) {
-          console.log("[NIP-46] Page visible again, polling immediately...");
+          debug("[NIP-46] Page visible again, polling immediately...");
           pollOnce();
         }
       }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getNDK } from '@/lib/nostr';
+import { getNDK, resolvePubkey } from '@/lib/nostr';
+import { usePetViewer } from '@/store/petViewer';
 import { useLang } from '@/lib/i18n';
 import { ANIMAL_META } from '@/lib/petModels';
 import type { AnimalType } from '@/lib/petModels';
@@ -42,6 +43,21 @@ export default function Leaderboard() {
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const openPet = usePetViewer(s => s.open);
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setSearching(true);
+    setSearchError('');
+    const pk = await resolvePubkey(query);
+    setSearching(false);
+    if (pk) openPet(pk);
+    else setSearchError(lang === 'es' ? 'No encontramos ese npub / NIP-05' : "Couldn't find that npub / NIP-05");
+  }
 
   useEffect(() => {
     fetch('/api/leaderboard')
@@ -93,6 +109,22 @@ export default function Leaderboard() {
           <p className="text-lc-muted mt-1">{t.leaderboardSubtitle}</p>
         </div>
 
+        {/* Look up anyone's pet by identity */}
+        <form onSubmit={handleSearch} className="mb-6">
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={e => { setQuery(e.target.value); setSearchError(''); }}
+              placeholder={lang === 'es' ? 'Buscar mascota por npub o NIP-05 (vos@lacrypta.ar)' : 'Find a pet by npub or NIP-05 (you@lacrypta.ar)'}
+              className="flex-1 min-w-0 bg-lc-dark border border-lc-border rounded-full px-4 py-2.5 text-sm text-lc-white placeholder:text-lc-muted/60 focus:outline-none focus:border-lc-green/50"
+            />
+            <button type="submit" disabled={searching || !query.trim()} className="lc-pill-primary px-5 py-2 text-sm font-bold disabled:opacity-50 shrink-0">
+              {searching ? '…' : (lang === 'es' ? 'Ver' : 'View')}
+            </button>
+          </div>
+          {searchError && <p className="text-xs text-red-400 mt-2 px-2">{searchError}</p>}
+        </form>
+
         {loading && (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
@@ -129,9 +161,11 @@ export default function Leaderboard() {
                 || nip19.npubEncode(entry.pubkey).slice(0, 12) + '…';
 
               return (
-                <div
+                <button
+                  type="button"
                   key={entry.pubkey}
-                  className="lc-card p-4 flex items-center gap-3 transition-all"
+                  onClick={() => openPet(entry.pubkey)}
+                  className="lc-card w-full text-left p-4 flex items-center gap-3 transition-all hover:border-lc-green/40 cursor-pointer"
                   style={style ? { background: style.bg, borderColor: style.border } : undefined}
                 >
                   {/* Rank */}
@@ -195,7 +229,7 @@ export default function Leaderboard() {
                       {entry.level}
                     </span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

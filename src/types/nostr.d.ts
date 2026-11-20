@@ -21,9 +21,16 @@ interface NostrWindow {
   nip04?: Nip04;
 }
 
+// WebLN (Alby & co.) — only the bits we use
+interface WebLNProvider {
+  enable(): Promise<void>;
+  sendPayment(paymentRequest: string): Promise<{ preimage: string }>;
+}
+
 declare global {
   interface Window {
     nostr?: NostrWindow;
+    webln?: WebLNProvider;
   }
 }
 
